@@ -17,8 +17,11 @@ import os
 
 
 script_dir = os.path.dirname(os.path.realpath(__file__))  # Get the directory of the script
-slalom_path = os.path.join(script_dir, "slalom_fixedbody_16dof.usd")  # Build the full path
-SLAMLOM_CFG = ArticulationCfg(
+slalom_path = os.path.normpath(
+    os.path.join(script_dir, "..", "models", "slalom_fixedbody_16dof.usd")
+)
+
+SLALOM_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=slalom_path,
         rigid_props = sim_utils.RigidBodyPropertiesCfg(

@@ -21,7 +21,7 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on using the interactive scene interface.")
-parser.add_argument("--num_envs", type=int, default=2, help="Number of environments to spawn.")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -44,9 +44,7 @@ from isaaclab.utils import configclass
 ##
 # Pre-defined configs
 ##
-from PlasticNeuralNet.tasks.slalom.models.slalom import SLAMLOM_CFG
-
-
+from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
 @configclass
 class SlalomSceneCfg(InteractiveSceneCfg):
     """Configuration for a slalom scene."""
@@ -60,7 +58,7 @@ class SlalomSceneCfg(InteractiveSceneCfg):
     )
 
     # articulation
-    slalom: ArticulationCfg = SLAMLOM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    slalom: ArticulationCfg = SLALOM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
