@@ -198,8 +198,10 @@ def main():
             # step the environment
             obs, _ = env.step(joint_efforts)
             # print current orientation of pole
-            print("Observation Shape :", obs["policy"][0].shape)
-            print("Observation Value :", obs["policy"][0])
+            # print("Observation Shape :", obs["policy"][0].shape)
+            # print("Observation Value :", obs["policy"][0])
+
+
             # update counter
             count += 1
     # close the environment

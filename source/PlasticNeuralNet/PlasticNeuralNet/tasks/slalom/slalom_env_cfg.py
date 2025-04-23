@@ -1,37 +1,21 @@
-from __future__ import annotations
-
-import math
-from dataclasses import MISSING
-
-
-from isaaclab.app import AppLauncher
-import argparse
-
-# Add argparse arguments
-parser = argparse.ArgumentParser(description="Tutorial on creating a cartpole base environment.")
-parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
-# append AppLauncher cli args
-AppLauncher.add_app_launcher_args(parser)
-# parse the arguments
-args_cli = parser.parse_args()
-# launch omniverse app
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
-
-#---------------------------------------------------------------------------------------------------#
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg , ManagerBasedEnv, ManagerBasedEnvCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import math
 import torch
+import numpy as np
 
 import PlasticNeuralNet.tasks.locomotion.velocity.mdp as mdp
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
@@ -143,7 +127,19 @@ class RewardsCfg:
     # V_x : robot velocity in x axis of world frame
     # U : upright posture from projection z_robot to the z-axis
     # Y : heading direction reward
+    pass
 
+@configclass
+class EventCfg:
+    """Configuration for events."""
+
+    # reset
+    pass
+
+@configclass
+class TerminationsCfg:
+    """Termination terms for the MDP."""
+    pass
 ##
 # Environment configuration
 ##
@@ -158,6 +154,10 @@ class SlalomEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
+    rewards : RewardsCfg = RewardsCfg()
+    events : EventCfg =EventCfg()
+    terminations : TerminationsCfg = TerminationsCfg()
+
     # MDP settings
 
     def __post_init__(self):
@@ -171,34 +171,3 @@ class SlalomEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.disable_contact_processing = True
         # self.sim.physics_material = self.scene.terrain.physics_material
         # self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
-
-def main():
-
-    """Main function."""
-    # parse the arguments
-    env_cfg = SlalomEnvCfg()
-    env_cfg.scene.num_envs = args_cli.num_envs
-    env_cfg.sim.device = args_cli.device
-    # setup base environment
-    env = ManagerBasedEnv(cfg=env_cfg)
-
-    # simulate physics
-    count = 0
-    while simulation_app.is_running():
-        with torch.inference_mode():
-            # reset
-            if count % 300 == 0:
-                count = 0
-                env.reset()
-                print("-" * 80)
-                print("[INFO]: Resetting environment...")
-            # sample random actions
-            joint_efforts = torch.randn_like(env.action_manager.action)
-            # step the environment
-            obs, _ = env.step(joint_efforts)
-            # print current orientation of pole
-            print("Observation Shape :", obs["policy"][0].shape)
-            print("Observation Value :", obs["policy"][0])
-            # update counter
-            count += 1
-
