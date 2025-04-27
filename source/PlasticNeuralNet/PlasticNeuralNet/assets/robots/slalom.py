@@ -28,8 +28,8 @@ SLALOM_CFG = ArticulationCfg(
             rigid_body_enabled=True,
             max_linear_velocity=1000.0,
             max_angular_velocity=1000.0,
-            max_depenetration_velocity=100.0,
-            enable_gyroscopic_forces=True,
+            max_depenetration_velocity=10.0,
+            enable_gyroscopic_forces=True,           
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
@@ -39,6 +39,9 @@ SLALOM_CFG = ArticulationCfg(
             stabilization_threshold=0.001,
         )
     ),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0 ,0.0 ,0.0)
+        ),
         actuators={
             "dummy" : ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
