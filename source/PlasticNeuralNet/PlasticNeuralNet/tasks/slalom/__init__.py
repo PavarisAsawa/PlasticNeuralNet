@@ -9,7 +9,7 @@ Reference:
 import gymnasium as gym
 
 from . import agents
-from .slalom_env_cfg import SlalomEnvCfg 
+from .slalom_env_cfg import SlalomManagerEnvCfg
 ##
 # Register Gym environments.
 ##
@@ -19,10 +19,20 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point":SlalomEnvCfg,
+        "env_cfg_entry_point":SlalomManagerEnvCfg,
         # "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:AnymalDFlatPPORunnerCfg",
         # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
         # "sb3_cfg_entry_point": f"{agents.__name__}:sb3_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id='Isaac-Direct-slalom',
+    entry_point=f"{__name__}.slalom_env:SlalomLocomotionTask",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.slalom_env:SlalomEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SlalomPPORunnerCfg",
     },
 )

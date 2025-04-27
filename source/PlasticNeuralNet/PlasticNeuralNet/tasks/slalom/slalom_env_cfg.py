@@ -146,7 +146,7 @@ class TerminationsCfg:
 
 
 @configclass
-class SlalomEnvCfg(ManagerBasedRLEnvCfg):
+class SlalomManagerEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings

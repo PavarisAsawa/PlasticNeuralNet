@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to play a checkpoint if an RL agent from RSL-RL."""
+"""Script to play a checkpoint if an RL agent from Stable-Baselines3."""
 
 """Launch Isaac Sim Simulator first."""
 
@@ -11,11 +11,8 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
-# local imports
-import cli_args  # isort: skip
-
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
+parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from Stable-Baselines3.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument(
@@ -23,16 +20,21 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
 )
+parser.add_argument(
+    "--use_last_checkpoint",
+    action="store_true",
+    help="When no checkpoint provided, use the last saved model. Otherwise use the best saved model.",
+)
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
-# append RSL-RL cli arguments
-cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
+# parse the arguments
 args_cli = parser.parse_args()
 # always enable cameras to record video
 if args_cli.video:
@@ -45,49 +47,55 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import gymnasium as gym
+import numpy as np
 import os
 import time
 import torch
 
-from rsl_rl.runners import OnPolicyRunner
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import VecNormalize
 
 from isaaclab.envs import DirectMARLEnv, multi_agent_to_single_agent
-from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
+from isaaclab_rl.sb3 import Sb3VecEnvWrapper, process_sb3_cfg
 
-import PlasticNeuralNet.tasks.slalom.slalom_env
 import isaaclab_tasks  # noqa: F401
-from isaaclab_tasks.utils import get_checkpoint_path, parse_env_cfg
+from isaaclab_tasks.utils.parse_cfg import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 
 
 def main():
-    """Play with RSL-RL agent."""
+    """Play with stable-baselines agent."""
     # parse configuration
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
-    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    agent_cfg = load_cfg_from_registry(args_cli.task, "sb3_cfg_entry_point")
 
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
+    # directory for logging into
+    log_root_path = os.path.join("logs", "sb3", args_cli.task)
     log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Loading experiment from directory: {log_root_path}")
+    # checkpoint and log_dir stuff
     if args_cli.use_pretrained_checkpoint:
-        resume_path = get_published_pretrained_checkpoint("rsl_rl", args_cli.task)
-        if not resume_path:
+        checkpoint_path = get_published_pretrained_checkpoint("sb3", args_cli.task)
+        if not checkpoint_path:
             print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
             return
-    elif args_cli.checkpoint:
-        resume_path = retrieve_file_path(args_cli.checkpoint)
+    elif args_cli.checkpoint is None:
+        if args_cli.use_last_checkpoint:
+            checkpoint = "model_.*.zip"
+        else:
+            checkpoint = "model.zip"
+        checkpoint_path = get_checkpoint_path(log_root_path, ".*", checkpoint)
     else:
-        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        checkpoint_path = args_cli.checkpoint
+    log_dir = os.path.dirname(checkpoint_path)
 
-    log_dir = os.path.dirname(resume_path)
+    # post-process agent configuration
+    agent_cfg = process_sb3_cfg(agent_cfg)
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
@@ -107,38 +115,29 @@ def main():
         print("[INFO] Recording videos during training.")
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    # wrap around environment for stable baselines
+    env = Sb3VecEnvWrapper(env)
 
-    # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+    # normalize environment (if needed)
+    if "normalize_input" in agent_cfg:
+        env = VecNormalize(
+            env,
+            training=True,
+            norm_obs="normalize_input" in agent_cfg and agent_cfg.pop("normalize_input"),
+            norm_reward="normalize_value" in agent_cfg and agent_cfg.pop("normalize_value"),
+            clip_obs="clip_obs" in agent_cfg and agent_cfg.pop("clip_obs"),
+            gamma=agent_cfg["gamma"],
+            clip_reward=np.inf,
+        )
 
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-    # load previously trained model
-    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
-    ppo_runner.load(resume_path)
-
-    # obtain the trained policy for inference
-    policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
-
-    # extract the neural network module
-    # we do this in a try-except to maintain backwards compatibility.
-    try:
-        # version 2.3 onwards
-        policy_nn = ppo_runner.alg.policy
-    except AttributeError:
-        # version 2.2 and below
-        policy_nn = ppo_runner.alg.actor_critic
-
-    # export policy to onnx/jit
-    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(policy_nn, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt")
-    export_policy_as_onnx(
-        policy_nn, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
-    )
+    # create agent from stable baselines
+    print(f"Loading checkpoint from: {checkpoint_path}")
+    agent = PPO.load(checkpoint_path, env, print_system_info=True)
 
     dt = env.unwrapped.step_dt
 
     # reset environment
-    obs, _ = env.get_observations()
+    obs = env.reset()
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
@@ -146,7 +145,7 @@ def main():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            actions = policy(obs)
+            actions, _ = agent.predict(obs, deterministic=True)
             # env stepping
             obs, _, _, _ = env.step(actions)
         if args_cli.video:
