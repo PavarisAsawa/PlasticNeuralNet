@@ -11,13 +11,13 @@ import math
 import torch
 import numpy as np
 
-from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate
+from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate , quat_rotate
 import isaacsim.core.utils.torch as torch_utils
 
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
 
 @configclass
-class SlalomEnvCfg(DirectRLEnvCfg):
+class SlalomFullStateEnvCfg(DirectRLEnvCfg):
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,
@@ -80,7 +80,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     decimation = 2 # controlFrequencyInv
     episode_length_s = 9999
     action_space = 16 # for gecko
-    observation_space = 22 # for gecko
+    observation_space = 55 # for gecko
     state_space = 0
     action_scale = 1
     angular_velocity_scale = 1
@@ -104,10 +104,10 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     # terminationHeight= 0.31
     # alive_reward_scale= 0.5
 
-class SlalomLocomotionTask(DirectRLEnv):
-    cfg: SlalomEnvCfg
+class SlalomFullStateLocomotionTask(DirectRLEnv):
+    cfg: SlalomFullStateEnvCfg
 
-    def __init__(self, cfg: SlalomEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: SlalomFullStateEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         
         # Define number of spaces
@@ -154,7 +154,12 @@ class SlalomLocomotionTask(DirectRLEnv):
         # self._sensor_indices = torch.tensor(
         #     [self._ants._body_indices[j] for j in force_links], device=self._device, dtype=torch.long
         # )
-
+        self.foot_names   = ["foot_lf", "foot_rf", "foot_lh", "foot_rh"]
+        self.foot_indices = torch.tensor(
+            [self.robot.data.body_names.index(n) for n in self.foot_names],
+            dtype=torch.long,
+            device=self.sim.device,
+        )
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
@@ -190,9 +195,9 @@ class SlalomLocomotionTask(DirectRLEnv):
         self.torso_position, self.torso_rotation = self.robot.data.root_pos_w, self.robot.data.root_quat_w
         # get vel
         self.velocity, self.ang_velocity = self.robot.data.root_lin_vel_w, self.robot.data.root_ang_vel_w
-        # get joint position and joint velocity
-        self.dof_pos, self.dof_vel = self.robot.data.joint_pos, self.robot.data.joint_vel
-        
+        # get joint position , joint velocity , joint effort 
+        self.dof_pos, self.dof_vel, self.dof_effort = self.robot.data.joint_pos, self.robot.data.joint_vel , self.robot.data.applied_torque
+
         # compute some useful value 
         (
             self.up_proj,
@@ -226,45 +231,17 @@ class SlalomLocomotionTask(DirectRLEnv):
         )
 
     def _get_observations(self) -> dict:
-
-        #------------- default -------------#
-        # obs_buf shapes: 1, 3, 3, 1, 1, 1, 1, 1, num_dofs, num_dofs, num_sensors * 6, num_dofs
-        # obs = torch.cat(
-        #     (
-        #         self.torso_position[:, 2].view(-1, 1),                      # idx 0
-        #         self.vel_loc,                                               # idx 1 2 3
-        #         self.angvel_loc * self.cfg.angular_velocity_scale,          # idx 4 5 6 
-        #         normalize_angle(self.yaw).unsqueeze(-1),                    # idx 7
-        #         normalize_angle(self.roll).unsqueeze(-1),                   # idx 8
-        #         normalize_angle(self.angle_to_target).unsqueeze(-1),        # idx 9
-        #         self.up_proj.unsqueeze(-1),                                 # idx 10
-        #         self.heading_proj.unsqueeze(-1),                            # idx 11
-        #         self.dof_pos_scaled,                                        # 12 - 
-        #         self.dof_vel * self.cfg.dof_vel_scale,
-        #         self.actions,
-        #     ),
-        #     dim=-1,
-        # )
-        # observations = {"policy": obs}
-
-        #------------- configs -------------#
-        # obs = torch.cat(
-        #     (
-        #         self.dof_pos ,          # inx 0 - 15
-        #         self.dof_vel ,          # inx 16 - 31
-        #         normalize_angle(self.roll).unsqueeze(-1),       # inx 32
-        #         normalize_angle(self.pitch).unsqueeze(-1),      # inx 33
-        #         normalize_angle(self.yaw).unsqueeze(-1),        # inx 34
-        #         self.actions ,                                  # inx 35-50 ***
-        #         self.vel_loc ,                                  # inx 51 52 53
-        #         self.up_proj.unsqueeze(-1) ,                    # inx 54
-        #     ),
-        #     dim=-1
-        # )
-
+        # ['robot_base', 'motor2_lf', 'motor2_lh', 'motor2_rf', 'motor2_rh', 'motor3_lf', 'motor3_lh', 'motor3_rf', 'motor3_rh', 'motor4_lf', 'motor4_lh', 'motor4_rf', 'motor4_rh', 'link4_lf', 'link4_lh', 'link4_rf', 'link4_rh', 'foot_lf', 'foot_lh', 'foot_rf', 'foot_rh']
+        # print(self.robot.data.body_names.index("foot_lh"))
+        foot_local = self._get_foot_pos_local()
+        print(foot_local)
         obs = torch.cat(
             (
-                self.dof_pos ,          # inx 0 - 15
+                self.dof_effort ,       # inx 0 - 15
+                self.dof_vel ,          # inx 16 - 31
+                self.dof_pos ,          # inx 32 - 47
+                self.torso_position ,   # inx 47 48 49
+                foot_local,             # inx 50 - 61
                 normalize_angle(self.roll).unsqueeze(-1),       # inx 16
                 normalize_angle(self.pitch).unsqueeze(-1),      # inx 17
                 normalize_angle(self.yaw).unsqueeze(-1),        # inx 18
@@ -284,7 +261,6 @@ class SlalomLocomotionTask(DirectRLEnv):
             self.heading_proj,
             self.up_proj,
         )
-
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -316,6 +292,28 @@ class SlalomLocomotionTask(DirectRLEnv):
 
         self._compute_intermediate_values()
 
+    def _get_foot_pos_local(self) -> torch.Tensor:
+        """Return (num_envs, 4, 3) tensor of foot positions in the robot-base frame."""
+        # ------------------------------------------------------------------
+        foot_pos_w  = self.robot.data.body_pos_w[:, self.foot_indices]      # (N,4,3)
+        base_pos_w  = self.torso_position.unsqueeze(1)                      # (N,1,3)
+        delta_w     = foot_pos_w - base_pos_w                               # (N,4,3)
+
+        base_quat_w = self.torso_rotation.unsqueeze(1)                      # (N,1,4)
+        base_quat_conj = quat_conjugate(base_quat_w).expand(-1, 4, -1)      # (N,4,4)
+
+        # ---------- reshape เป็น ----------
+        B, F = base_quat_conj.shape[:2]          # B = num_envs, F = 4 feet
+        q_flat = base_quat_conj.reshape(B*F, 4)  # (B·F, 4)
+        v_flat = delta_w.reshape(B*F, 3)         # (B·F, 3)
+
+        # ---------- rotate ----------
+        v_rot  = quat_rotate(q_flat, v_flat)     # (B·F, 3)
+
+        # ---------- reshape ----------
+        foot_pos_b = v_rot.view(B, F, 3)         # (N, 4, 3)
+        foot_flat = foot_pos_b.reshape(foot_pos_b.shape[0], -1)  # (N, 12)
+        return foot_flat
 
 @torch.jit.script
 def compute_rewards(
@@ -364,7 +362,7 @@ def compute_intermediate_values(
     prev_potentials: torch.Tensor,
     dt: float,
 ):
-    to_target = targets - torso_position # in world frame
+    to_target = targets - torso_position
     to_target[:, 2] = 0.0
 
     
