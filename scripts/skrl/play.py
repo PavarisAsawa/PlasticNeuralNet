@@ -90,6 +90,7 @@ from isaaclab_rl.skrl import SkrlVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
+import PlasticNeuralNet.tasks.slalom
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 

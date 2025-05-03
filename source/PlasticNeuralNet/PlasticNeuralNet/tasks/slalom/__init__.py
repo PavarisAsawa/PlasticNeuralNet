@@ -9,40 +9,32 @@ Reference:
 import gymnasium as gym
 
 from . import agents
-from .slalom_env_cfg import SlalomManagerEnvCfg
+from ..old.slalom_env_cfg import SlalomManagerEnvCfg
 ##
 # Register Gym environments.
 ##
 
-gym.register(
-    id='Isaac-slalom',
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point":SlalomManagerEnvCfg,
-        # "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:AnymalDFlatPPORunnerCfg",
-        # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
-        # "sb3_cfg_entry_point": f"{agents.__name__}:sb3_ppo_cfg.yaml",
-    },
-)
 
 gym.register(
-    id='Isaac-Direct-slalom',
+    id='default',
     entry_point=f"{__name__}.slalom_env:SlalomLocomotionTask",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.slalom_env:SlalomEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SlalomPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id='t',
+    id='fullstate',
     entry_point=f"{__name__}.slalom_fullstate_env:SlalomFullStateLocomotionTask",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.slalom_fullstate_env:SlalomFullStateEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:SlalomPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
     },
 )

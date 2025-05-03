@@ -24,6 +24,7 @@ slalom_path = os.path.normpath(
 SLALOM_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=slalom_path,
+        activate_contact_sensors = True,
         rigid_props = sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,
             max_linear_velocity=1000.0,

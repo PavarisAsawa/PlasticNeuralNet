@@ -69,6 +69,7 @@ from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
+import PlasticNeuralNet.tasks.slalom.slalom_env
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 

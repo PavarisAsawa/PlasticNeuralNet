@@ -78,7 +78,8 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     
     # env
     decimation = 2 # controlFrequencyInv
-    episode_length_s = 9999
+    episode_length_s = 30
+
     action_space = 16 # for gecko
     observation_space = 22 # for gecko
     state_space = 0
@@ -268,7 +269,7 @@ class SlalomLocomotionTask(DirectRLEnv):
                 normalize_angle(self.roll).unsqueeze(-1),       # inx 16
                 normalize_angle(self.pitch).unsqueeze(-1),      # inx 17
                 normalize_angle(self.yaw).unsqueeze(-1),        # inx 18
-                self.vel_loc ,                                  # inx 19
+                self.vel_loc ,                                  # inx 19 - 21
             ),
             dim=-1
         )
@@ -289,7 +290,7 @@ class SlalomLocomotionTask(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
-        time_out = self.episode_length_buf >= self.max_episode_length - 1
+        time_out = self.episode_length_buf >= (self.max_episode_length - 1)
         # died = self.torso_position[:, 2] < self.cfg.termination_height
         died = torch.zeros_like(time_out, dtype=torch.bool)
         return died , time_out 
@@ -301,13 +302,28 @@ class SlalomLocomotionTask(DirectRLEnv):
         self.robot.reset(env_ids)
         super()._reset_idx(env_ids)
 
-        joint_pos = self.robot.data.default_joint_pos[env_ids]
-        joint_vel = self.robot.data.default_joint_vel[env_ids]
+        num_reset = len(env_ids)
+
+
+        # ------------------ Reset Action ------------------ #
+        self.actions[env_ids] = 0.0
+        self.prev_actions[env_ids] = 0.0
+        # ------------------ Reset Robot ------------------ # 
+        # joint_pos = self.robot.data.default_joint_pos[env_ids]
+        # joint_vel = self.robot.data.default_joint_vel[env_ids]
+        joint_pos = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.2,0.2)
+        joint_pos[:] = torch.clamp(self.robot.data.default_joint_pos[env_ids] + joint_pos , self.robot.data.joint_pos_limits[: , : , 0], self.robot.data.joint_pos_limits[: , : , 1])
+        
+        joint_vel = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.1,0.1)
+
+        # Get Root Pose
         default_root_state = self.robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
 
+        # Set Root Pose/Vel
         self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
+        # Set Joint State
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         to_target = self.targets[env_ids] - default_root_state[:, :3]

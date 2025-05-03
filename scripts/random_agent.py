@@ -32,7 +32,7 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import torch
-
+import numpy as np
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 # from PlasticNeuralNet.tasks.slalom import *
@@ -50,8 +50,11 @@ def main():
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
     # create environment
-    # env = gym.make(args_cli.task, cfg=env_cfg)
     env = gym.make(args_cli.task, cfg=env_cfg)
+    base_env = env.unwrapped
+    
+    # log 
+    log = []
 
     # print info (this is vectorized environment)
     print(f"[INFO]: Gym observation space: {env.observation_space}")
@@ -66,10 +69,12 @@ def main():
             actions = 2 * torch.rand(env.action_space.shape, device=env.unwrapped.device) - 1
             # apply actions
             env.step(actions)
-
+            # print(torch.norm(base_env.scene["contact_sensor_lf"].data.net_forces_w))
+            # log.append(torch.norm(base_env.scene["contact_sensor_lf"].data.net_forces_w).item())
     # close the simulator
     env.close()
-
+    # data = np.asarray(log, dtype=np.float32) 
+    # np.save("foot_contact.npy", data)         # 5) write one compact file
 
 if __name__ == "__main__":
     # run the main function

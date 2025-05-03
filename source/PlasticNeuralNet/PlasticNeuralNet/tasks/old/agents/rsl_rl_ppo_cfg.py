@@ -9,7 +9,7 @@ class SlalomPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 32
     max_iterations = 7200
     save_interval = 100
-    experiment_name = "slalom"
+    experiment_name = "default"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
