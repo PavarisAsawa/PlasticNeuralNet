@@ -1,11 +1,7 @@
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, Articulation, AssetBaseCfg
-from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg , ViewerCfg
-from isaaclab.utils import configclass
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg ,PhysxCfg , RigidBodyMaterialCfg, RigidBodyPropertiesCfg
-from isaaclab.terrains import TerrainImporterCfg
-from isaaclab.sensors import ContactSensorCfg , ContactSensor
+from isaaclab.assets import Articulation
+from isaaclab.envs import DirectRLEnv
+from isaaclab.sensors import ContactSensor
 
 import math
 import torch
@@ -17,7 +13,7 @@ import isaacsim.core.utils.torch as torch_utils
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
 from .slalom_fullstate_env_cfg import SlalomFullStateEnvCfg
     
-class SlalomFullStateLocomotionTask(DirectRLEnv):
+class SlalomFullState2LocomotionTask(DirectRLEnv):
     cfg: SlalomFullStateEnvCfg
 
     def __init__(self, cfg: SlalomFullStateEnvCfg, render_mode: str | None = None, **kwargs):
@@ -65,29 +61,50 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
 
         # Foot Contact
         self.foot_contact_force = torch.zeros(self.num_envs , 4 , dtype=torch.float32, device=self.sim.device)
-        self.foot_names   = ["foot_lf", "foot_rf", "foot_lh", "foot_rh"]
-        self.foot_indices = torch.tensor(
-            [self.robot.data.body_names.index(n) for n in self.foot_names],
-            dtype=torch.long,
-            device=self.sim.device,
-        )
+        # Foot indices
+        self.foot_indices , _ = self.robot.find_bodies("foot_.*")
+        # Undesired contact indices
+        pattern = r"^(?!foot_).*"
+        self.undesired_indices, _ = self.robot.find_bodies(pattern)
+        print(_)
+        # self.foot_indices = torch.tensor(
+        #     [self.robot.data.body_names.index(n) for n in self.foot_names],
+        #     dtype=torch.long,
+        #     device=self.sim.device,
+        # )
         
-        # Set view Frame
-        
+        # Logging
+        self._episode_sums = {
+        key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        for key in [
+            "trck_lin_vel",
+            "heading",
+            "upright",
+            "torque",
+            "feet_air_time",
+            "undesired_contacts",
+        ]
+    }
+
+    
 
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
+        # add articulation to scene
+        self.scene.articulations["robot"] = self.robot
 
         # Add contact sensor to scene
-        self.contact_sensor_lf = ContactSensor(self.cfg.contact_force_lf)
-        self.contact_sensor_rf = ContactSensor(self.cfg.contact_force_rf)
-        self.contact_sensor_lh = ContactSensor(self.cfg.contact_force_lh)
-        self.contact_sensor_rh = ContactSensor(self.cfg.contact_force_rh)
-        self.scene.sensors["contact_sensor_lf"] = self.contact_sensor_lf
-        self.scene.sensors["contact_sensor_rf"] = self.contact_sensor_rf
-        self.scene.sensors["contact_sensor_lh"] = self.contact_sensor_lh
-        self.scene.sensors["contact_sensor_rh"] = self.contact_sensor_rh
+        self.contact_sensor = ContactSensor(self.cfg.contact_force)
+        self.scene.sensors["contact_sensor"] = self.contact_sensor
+        # self.contact_sensor_lf = ContactSensor(self.cfg.contact_force_lf)
+        # self.contact_sensor_rf = ContactSensor(self.cfg.contact_force_rf)
+        # self.contact_sensor_lh = ContactSensor(self.cfg.contact_force_lh)
+        # self.contact_sensor_rh = ContactSensor(self.cfg.contact_force_rh)
+        # self.scene.sensors["contact_sensor_lf"] = self.contact_sensor_lf
+        # self.scene.sensors["contact_sensor_rf"] = self.contact_sensor_rf
+        # self.scene.sensors["contact_sensor_lh"] = self.contact_sensor_lh
+        # self.scene.sensors["contact_sensor_rh"] = self.contact_sensor_rh
 
         # terrain
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
@@ -96,9 +113,6 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
 
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
-        
-        # add articulation to scene
-        self.scene.articulations["robot"] = self.robot
         
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -173,47 +187,63 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
             dim=-1
         )
         observations = {"policy" : obs} # 76 term
-        # print(len(obs[0]))
-        # print(len(self.torso_position[0]))
+
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        # total_reward = compute_rewards(
-        #     self.cfg.lin_vel_weight,
-        #     self.cfg.heading_weight,
-        #     self.cfg.up_weight,
-        #     self.vel_loc[:, 0],
-        #     self.heading_proj,
-        #     self.up_proj,
-        # )
-
         lin_vel = self.vel_loc[:, 0]
         heading_proj = self.heading_proj
         up_proj = self.up_proj
         joint_torques = torch.sum(torch.square(self.robot.data.applied_torque), dim=1)
+        first_contact = self.contact_sensor.compute_first_contact(self.step_dt)[:, self.foot_indices]
+        last_air_time = self.contact_sensor.data.last_air_time[:, self.foot_indices]
+        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
 
         # speed reward
         lin_vel_reward = lin_vel * self.cfg.lin_vel_weight
         # heading rewards    
-        heading_reward = torch.where(heading_proj > 0.95 , 0 , -0.5)    *   self.cfg.heading_weight
+        heading_reward = torch.where(heading_proj > 0.95 , 0 , 1.0)    *   self.cfg.heading_weight
         # aligning up axis of robot and environment
-        up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , -0.5)  *   self.cfg.up_weight
-        # 
+        up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , 1.0)  *   self.cfg.up_weight
+        # up_reward = torch.sum(torch.square(self.robot.data.projected_gravity_b[:, :2]), dim=1) *   self.cfg.up_weight
+        # torque
+        torque_reward =  joint_torques   *   self.cfg.joint_torque_weight
+        # Air 
+        feet_air_time_reward = air_time * self.cfg.feet_air_time_weight
+        # undesired contact
+        net_contact_forces = self.contact_sensor.data.net_forces_w_history
+        is_contact = (
+            torch.max(torch.norm(net_contact_forces[:, :, self.undesired_indices], dim=-1), dim=1)[0] > 1.0
+        )
+        contacts = torch.sum(is_contact, dim=1)
+        undesired_contacts = contacts * self.cfg.undesired_contact_weight
         
-        total_reward = lin_vel_reward + heading_reward + up_reward
+        rewards = {
+            "trck_lin_vel" : lin_vel_reward ,
+            "heading" : heading_reward , 
+            "upright" : up_reward ,
+            "torque" : torque_reward ,
+            "feet_air_time" : feet_air_time_reward ,
+            "undesired_contacts" : undesired_contacts
+        }
+        
+        total_reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        # total_reward = lin_vel_reward + heading_reward + up_reward + torque_reward
+
+        for key, value in rewards.items():
+            self._episode_sums[key] += value
+        # print(total_reward)
 
         return total_reward
-    
-
-
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
         time_out = self.episode_length_buf >= (self.max_episode_length - 1)
         # died = self.torso_position[:, 2] < self.cfg.termination_height
         died = torch.zeros_like(time_out, dtype=torch.bool)
+        died = time_out
+
         return died , time_out 
-        # return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
@@ -222,19 +252,23 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         super()._reset_idx(env_ids)
 
         num_reset = len(env_ids)
+        if len(env_ids) == self.num_envs:
+            # Spread out the resets to avoid spikes in training when many environments reset at a similar time
+            self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
 
         # ------------------ Reset Action ------------------ #
         self.actions[env_ids] = 0.0
         self.prev_actions[env_ids] = 0.0
         # ------------------ Reset Robot ------------------ # 
-        # joint_pos = self.robot.data.default_joint_pos[env_ids]
-        # joint_vel = self.robot.data.default_joint_vel[env_ids]
-        joint_pos = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.2,0.2)
-        joint_pos[:] = torch.clamp(self.robot.data.default_joint_pos[env_ids] + joint_pos , self.robot.data.joint_pos_limits[: , : , 0], self.robot.data.joint_pos_limits[: , : , 1])
-        
-        joint_vel = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.1,0.1)
+        default_pos = self.robot.data.default_joint_pos[env_ids]
 
-        # Get Root Pose
+        rand_pos = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.2,0.2)
+        joint_pos = torch.clamp(default_pos + rand_pos , self.robot.data.joint_pos_limits[env_ids , : , 0], self.robot.data.joint_pos_limits[env_ids , : , 1])
+        # joint_vel = torch.empty((num_reset, self.robot.num_joints), device=self.device).uniform_(-0.1, 0.1)
+        joint_vel = torch.empty(num_reset , self.robot.num_joints , device=self.sim.device).uniform_(-0.05,0.05)
+
+        #
+        #  Get Root Pose
         default_root_state = self.robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self.scene.env_origins[env_ids]
 
@@ -247,6 +281,18 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         to_target = self.targets[env_ids] - default_root_state[:, :3]
         to_target[:, 2] = 0.0
         self.potentials[env_ids] = -torch.norm(to_target, p=2, dim=-1) / self.cfg.sim.dt
+
+        # Logging
+        extras = dict()
+        for key in self._episode_sums.keys():
+            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
+            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length
+            self._episode_sums[key][env_ids] = 0.0
+        self.extras["log"] = dict()
+        self.extras["log"].update(extras)
+        extras = dict()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        self.extras["log"].update(extras)
 
         self._compute_intermediate_values()
 
@@ -274,47 +320,15 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         return foot_flat
     
     def _get_foot_contact(self):
-        self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor_lf"].data.net_forces_w)
-        self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor_rf"].data.net_forces_w)
-        self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor_lh"].data.net_forces_w)
-        self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor_rh"].data.net_forces_w)
+        self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,0])
+        self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,1])
+        self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,2])
+        self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,3])
 
         return torch.stack((self.foot_contact_force[:,0] , self.foot_contact_force[:,1] , self.foot_contact_force[:,2] , self.foot_contact_force[:,3]),dim=1)
         # print(self.scene["contact_sensor_lf"])
         # print("Received contact force of: ", self.scene["contact_sensor_lf"].data.net_forces_w)
         # print("Norm : ", torch.norm(self.scene["contact_sensor_lf"].data.net_forces_w))
-
-@torch.jit.script
-def compute_rewards(
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : torch.Tensor,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-):
-    '''
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : float,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-    '''
-    # speed reward
-    lin_vel_reward = lin_vel * lin_vel_weight
-
-    # heading rewards    
-    heading_reward = torch.where(heading_proj > 0.95 , 0 , -0.5)    *   heading_weight
-
-    # aligning up axis of robot and environment
-    up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , -0.5)  *   up_weight
-
-
-
-    total_reward = lin_vel_reward + heading_reward + up_reward
-    return total_reward
-
 
 @torch.jit.script
 def compute_intermediate_values(
