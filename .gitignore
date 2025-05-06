@@ -19,7 +19,12 @@
 
 # Outputs
 **/runs/*
+**/logs/*
 **/recordings/*
+**/output/*
+**/outputs/*
+**/videos/*
+**/wandb/*
 **/.neptune/*
 docker/artifacts/
 *.tmp
