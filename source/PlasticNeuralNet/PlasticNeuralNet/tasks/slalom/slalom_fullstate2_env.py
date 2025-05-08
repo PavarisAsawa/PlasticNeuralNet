@@ -11,12 +11,12 @@ from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_
 import isaacsim.core.utils.torch as torch_utils
 
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
-from .slalom_fullstate_env_cfg import SlalomFullStateEnvCfg
+from .slalom_env_cfg import SlalomEnvCfg
     
 class SlalomFullState2LocomotionTask(DirectRLEnv):
-    cfg: SlalomFullStateEnvCfg
+    cfg: SlalomEnvCfg
 
-    def __init__(self, cfg: SlalomFullStateEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: SlalomEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         
         # Define number of spaces

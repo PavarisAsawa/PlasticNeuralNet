@@ -16,7 +16,7 @@ import isaacsim.core.utils.torch as torch_utils
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
 
 @configclass
-class SlalomFullStateEnvCfg(DirectRLEnvCfg):
+class SlalomEnvCfg(DirectRLEnvCfg):
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=0.005,
@@ -85,32 +85,6 @@ class SlalomFullStateEnvCfg(DirectRLEnvCfg):
     angular_velocity_scale = 1
 
     contact_debug_vis = False
-    # Sensor
-    # contact_force_lf = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/foot_lf",
-    #     update_period=0.0,
-    #     history_length=6,
-    #     debug_vis=contact_debug_vis,
-    #     # filter_prim_paths_expr=["/World/envs/env_.*/ground"],
-    #     )
-    # contact_force_rf = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/foot_rf",
-    #     update_period=0.0,
-    #     history_length=6,
-    #     debug_vis=contact_debug_vis,
-    #     )
-    # contact_force_lh = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/foot_lh",
-    #     update_period=0.0,
-    #     history_length=6,
-    #     debug_vis=contact_debug_vis,
-    #     )
-    # contact_force_rh = ContactSensorCfg(
-    #     prim_path="/World/envs/env_.*/Robot/foot_rh",
-    #     update_period=0.0,
-    #     history_length=6,
-    #     debug_vis=contact_debug_vis,
-    #     )
     contact_force = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         update_period=0.0,
