@@ -15,6 +15,7 @@ from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_
 import isaacsim.core.utils.torch as torch_utils
 
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
+from .slalom_env_cfg import SlalomEnvCfg
 
 
 class SlalomLocomotionTask(DirectRLEnv):

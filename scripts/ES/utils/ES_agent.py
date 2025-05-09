@@ -3,8 +3,10 @@ from feedforward_neural_net_gpu import *
 from hebbian_neural_net import *
 from LSTM_neural_net import *
 from tqdm import tqdm
-
+import wandb
+import pickle
 from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
+import copy
 
 class ESAgent:
     def __init__(self,agent_cfg):
@@ -40,16 +42,27 @@ class ESAgent:
         # General Information
         self.TASK              = agent_cfg["task_name"]
         self.TEST              = agent_cfg["test"]
-        if self.TASK:
+        if self.TEST:
             self.USE_TRAIN_PARAM = True
+
         self.train_ff_path = agent_cfg["train_ff_path"]
         self.train_hebb_path = agent_cfg["train_hebb_path"]
         self.train_lstm_path = agent_cfg["train_lstm_path"]
         # Debug WanDB 
         self.wandb_activate = agent_cfg["wandb"]["wandb_activate"]
         self.wandb_name = agent_cfg["wandb"]["wandb_name"]
-        
+        self.wandb_group = agent_cfg["wandb"]["wandb_group"]
+        self.wandb_project = agent_cfg["wandb"]["wandb_project"]
 
+        if self.wandb_activate:
+            run_name = f"{self.wandb_name}_{self.ARCHITECTURE_NAME}_{self.wandb_group}"
+            wandb.init(
+                project=self.wandb_project,
+                group=self.wandb_group,
+                config=agent_cfg,
+                name=run_name,
+            )
+            
         # Initialize model
         if self.ARCHITECTURE_NAME == 'ff':
             self.models = FeedForwardNet(popsize=self.POPSIZE,
@@ -84,7 +97,19 @@ class ESAgent:
                 learning_rate_limit=self.LEARNING_RATE_LIMIT,
                 sigma_limit=self.SIGMA_LIMIT)
         self.solver.set_mu(self.models.get_a_model_params())
-        
+
+        if self.USE_TRAIN_PARAM:
+            if self.ARCHITECTURE_NAME == 'ff':
+                trained_data = pickle.load(open(self.dir_path+self.train_ff_path, 'rb'))
+            if self.ARCHITECTURE_NAME == 'hebb':
+                trained_data = pickle.load(open(self.dir_path+self.train_hebb_path, 'rb'))
+            if self.ARCHITECTURE_NAME == 'lstm':
+                trained_data = pickle.load(open(self.dir_path+self.train_lstm_path, 'rb'))
+
+            self.train_params = trained_data[0].best_param()
+            self.solver = trained_data[0]
+            print('train_params number: ', len(train_params))
+            
     
     def run(self,env, train=True,checkpoint=None):
         """
@@ -94,6 +119,14 @@ class ESAgent:
         """        
         # ES code
         # Log data initialized
+
+        if train:   # Trainig Loop
+            self.run_train(env=env)
+        else:       # Playing Loop
+            pass
+        
+ 
+    def run_train(self,env):
         pop_mean_curve = np.zeros(self.EPOCHS)
         best_sol_curve = np.zeros(self.EPOCHS)
         eval_curve = np.zeros(self.EPOCHS)
@@ -133,3 +166,47 @@ class ESAgent:
 
             pop_mean_curve[epoch] = fit_arr.mean()
             best_sol_curve[epoch] = fit_arr.max()
+
+            # WanDB Log data -------------------------------
+            if self.wandb_activate:
+                wandb.log({"epoch": epoch,
+                            "mean" : np.mean(fitlist),
+                            "best" : np.max(fitlist),
+                            "worst": np.min(fitlist),
+                            "std"  : np.std(fitlist)
+                            })
+            # Save model params and OpenES params
+            if (epoch + 1) % self.SAVE_EVERY == 0:
+                print('saving..')
+                pickle.dump((
+                    self.solver,
+                    copy.deepcopy(self.models),
+                    pop_mean_curve,
+                    best_sol_curve,
+                    ), open(self.dir_path+self.TASK+'_'+self.ARCHITECTURE_NAME+'_' + self.wandb_group + '_' + str(self.n_params_a_model) +'_' + str(epoch) + '_' + str(pop_mean_curve[epoch])[:6] + '.pickle', 'wb'))
+    
+    def run_play(self,env):
+    
+        for epoch in tqdm(range(self.EPOCHS)):
+            # sample params from ES and set model params
+            self.models.set_a_model_params(self.train_params)
+            obs = env.reset()
+            
+            # Rollout
+            for timse_step in range(self.EPISODE_LENGTH_TRAIN):
+                
+                actions = self.models.forward(obs['policy'])
+                next_obs, reward, terminated, truncated, _ = env.step(actions)
+                obs = next_obs
+                total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
+                
+            # Update to ES
+            total_rewards_cpu = total_rewards.cpu().numpy()
+            fitlist = list(total_rewards_cpu)
+            self.solver.tell(fitlist)
+
+            fit_arr = np.array(fitlist)
+
+            print('epoch', epoch, 'mean', fit_arr.mean(), 
+                  'best', fit_arr.max(), )
+

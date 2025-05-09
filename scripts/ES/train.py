@@ -15,6 +15,9 @@ parser.add_argument("--seed", type=int, default=None, help="Seed used for the en
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
+parser.add_argument("--train",type=int, nargs="?" , const=True, default=False, help="if True : training")
+parser.add_argument("--test", type=int, nargs="?" , const=True, default=False, help="if True : playing")
+
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
@@ -171,14 +174,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     
     agent = ESAgent(agent_cfg)
     
-    
-        # reset environment
-    obs, _ = env.reset()
-    timestep = 0
     # simulate environment
     while simulation_app.is_running():
-        agent.run()
-    
+        agent.run(env=env, train=args_cli.train)
     env.close()
 
 if __name__ == "__main__":
