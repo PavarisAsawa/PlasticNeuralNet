@@ -66,7 +66,7 @@ class SlalomFullState2LocomotionTask(DirectRLEnv):
         # Undesired contact indices
         pattern = r"^(?!foot_).*"
         self.undesired_indices, _ = self.robot.find_bodies(pattern)
-        print(_)
+        # print(_)
         # self.foot_indices = torch.tensor(
         #     [self.robot.data.body_names.index(n) for n in self.foot_names],
         #     dtype=torch.long,

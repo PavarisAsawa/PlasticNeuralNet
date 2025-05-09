@@ -1,11 +1,7 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, Articulation, AssetBaseCfg
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
-from isaaclab.utils import configclass
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg ,PhysxCfg , RigidBodyMaterialCfg, RigidBodyPropertiesCfg
-from isaaclab.terrains import TerrainImporterCfg
-
+from isaaclab.sensors import ContactSensor
 
 import math
 import torch
@@ -63,6 +59,16 @@ class SlalomLocomotionTask(DirectRLEnv):
 
         self.potentials = torch.zeros(self.num_envs, dtype=torch.float32, device=self.sim.device)
         self.prev_potentials = torch.zeros_like(self.potentials)
+
+        # Foot Contact
+        self.foot_contact_force = torch.zeros(self.num_envs , 4 , dtype=torch.float32, device=self.sim.device)
+        self.foot_contact_status = torch.zeros(self.num_envs , 4 , dtype=torch.float32, device=self.sim.device)
+        # Foot indices
+        self.foot_indices , _ = self.robot.find_bodies("foot_.*")
+        # Undesired contact indices
+        # pattern = r"^(?!foot_).*"
+        # self.undesired_indices, _ = self.robot.find_bodies(pattern)
+
         # sensor
         # force_links = ["foot_lf", "foot_rf", "foot_lh", "foot_rh"]
         # self._sensor_indices = torch.tensor(
@@ -72,7 +78,9 @@ class SlalomLocomotionTask(DirectRLEnv):
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
-        
+        # Add contact sensor
+        self.contact_sensor = ContactSensor(self.cfg.contact_force)
+        self.scene.sensors["contact_sensor"] = self.contact_sensor
         # terrain
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -140,49 +148,15 @@ class SlalomLocomotionTask(DirectRLEnv):
         )
 
     def _get_observations(self) -> dict:
-
-        #------------- default -------------#
-        # obs_buf shapes: 1, 3, 3, 1, 1, 1, 1, 1, num_dofs, num_dofs, num_sensors * 6, num_dofs
-        # obs = torch.cat(
-        #     (
-        #         self.torso_position[:, 2].view(-1, 1),                      # idx 0
-        #         self.vel_loc,                                               # idx 1 2 3
-        #         self.angvel_loc * self.cfg.angular_velocity_scale,          # idx 4 5 6 
-        #         normalize_angle(self.yaw).unsqueeze(-1),                    # idx 7
-        #         normalize_angle(self.roll).unsqueeze(-1),                   # idx 8
-        #         normalize_angle(self.angle_to_target).unsqueeze(-1),        # idx 9
-        #         self.up_proj.unsqueeze(-1),                                 # idx 10
-        #         self.heading_proj.unsqueeze(-1),                            # idx 11
-        #         self.dof_pos_scaled,                                        # 12 - 
-        #         self.dof_vel * self.cfg.dof_vel_scale,
-        #         self.actions,
-        #     ),
-        #     dim=-1,
-        # )
-        # observations = {"policy": obs}
-
-        #------------- configs -------------#
-        # obs = torch.cat(
-        #     (
-        #         self.dof_pos ,          # inx 0 - 15
-        #         self.dof_vel ,          # inx 16 - 31
-        #         normalize_angle(self.roll).unsqueeze(-1),       # inx 32
-        #         normalize_angle(self.pitch).unsqueeze(-1),      # inx 33
-        #         normalize_angle(self.yaw).unsqueeze(-1),        # inx 34
-        #         self.actions ,                                  # inx 35-50 ***
-        #         self.vel_loc ,                                  # inx 51 52 53
-        #         self.up_proj.unsqueeze(-1) ,                    # inx 54
-        #     ),
-        #     dim=-1
-        # )
-
+        foot_status = self._get_foot_status()
         obs = torch.cat(
             (
                 self.dof_pos ,          # inx 0 - 15
-                normalize_angle(self.roll).unsqueeze(-1),       # inx 16
-                normalize_angle(self.pitch).unsqueeze(-1),      # inx 17
-                normalize_angle(self.yaw).unsqueeze(-1),        # inx 18
-                self.vel_loc ,                                  # inx 19 - 21
+                self.dof_vel ,          # inx 16 - 31
+                normalize_angle(self.roll).unsqueeze(-1),       # inx 32
+                normalize_angle(self.pitch).unsqueeze(-1),      # inx 33
+                normalize_angle(self.yaw).unsqueeze(-1),        # inx 34
+                foot_status ,                                   # inx 35 - 38
             ),
             dim=-1
         )
@@ -245,6 +219,26 @@ class SlalomLocomotionTask(DirectRLEnv):
 
         self._compute_intermediate_values()
 
+    # def _get_foot_status(self):
+    #     self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,0])
+    #     self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,1])
+    #     self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,2])
+    #     self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,3])
+        
+    #     self.foot_contact_status[:,0] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,1] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,2] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,3] = 1 if self.foot_contact_force[:,0] > 1 else 0
+
+    #     return torch.stack((self.foot_contact_status[:,0] , self.foot_contact_status[:,1] , self.foot_contact_status[:,2] , self.foot_contact_status[:,3]),dim=1)
+    
+    def _get_foot_status(self):
+        f = self.scene["contact_sensor"].data.net_forces_w  # shape (num_envs, 4, 3)
+        # compute per-foot norm
+        foot_force_norm = torch.norm(f, dim=-1)            # (num_envs, 4)
+        # threshold at 1.0
+        foot_status = (foot_force_norm > 1.0).float()      # (num_envs, 4)
+        return foot_status
 
 @torch.jit.script
 def compute_rewards(

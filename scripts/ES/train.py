@@ -11,12 +11,30 @@ parser.add_argument("--video_length", type=int, default=200, help="Length of the
 parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument("--seed", type=int, default=42, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
-parser.add_argument("--train",type=int, nargs="?" , const=True, default=False, help="if True : training")
-parser.add_argument("--test", type=int, nargs="?" , const=True, default=False, help="if True : playing")
+# parser.add_argument(
+#     "--train",
+#     action="store_true",
+#     default=False,
+#     help="when given, run in training mode"
+# )
+
+parser.add_argument(
+    "--test",
+    action="store_true",
+    default=False,
+    help="when given, run in test/play mode"
+)
+parser.add_argument(
+    "--wandb",
+    action="store_true",
+    default=False,
+    help="when given, log in wandb"
+)
+
 
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
@@ -85,6 +103,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     
+    agent_cfg["ES_params"]["POPSIZE"] = args_cli.num_envs if args_cli.num_envs is not None else agent_cfg["POPSIZE"]
+    agent_cfg["USE_TRAIN_PARAM"] = True if args_cli.test else False
+    agent_cfg["wandb"]["wandb_activate"] = args_cli.wandb
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)
     # Set seed
@@ -120,17 +141,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.seed = agent_cfg["seed"]
 
 
-    ###################### FOR TODAY
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "es", agent_cfg["name"])
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
-    # specify directory for logging runs
-    log_dir = agent_cfg["params"]["config"].get("full_experiment_name", datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-    # set directory into agent config
-    # logging directory path: <train_dir>/<full_experiment_name>
-    agent_cfg["params"]["config"]["train_dir"] = log_root_path
-    agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
+
+    # # specify directory for logging runs
+    # log_dir = agent_cfg["params"]["config"].get("full_experiment_name", datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+    # # set directory into agent config
+    # # logging directory path: <train_dir>/<full_experiment_name>
+    # agent_cfg["params"]["config"]["train_dir"] = log_root_path
+    # agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
+
+    # new — use agent_cfg itself
+    log_dir = agent_cfg.get("experiment", None)
+    if not log_dir:
+        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    agent_cfg["train_dir"] = log_root_path
+    agent_cfg["full_experiment_name"] = log_dir
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
@@ -139,9 +168,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dump_pickle(os.path.join(log_root_path, log_dir, "params", "agent.pkl"), agent_cfg)
 
     # read configurations about the agent-training
-    rl_device = agent_cfg["params"]["config"]["device"]
-    clip_obs = agent_cfg["params"]["env"].get("clip_observations", math.inf)
-    clip_actions = agent_cfg["params"]["env"].get("clip_actions", math.inf)
+    rl_device = agent_cfg["rl_device"]
+    clip_obs = agent_cfg.get("clip_observations", math.inf)
+    clip_actions = agent_cfg.get("clip_actions", math.inf)
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
@@ -163,20 +192,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
         
     # wrap around environment for rl-games
-    env = RlGamesVecEnvWrapper(env, rl_device, clip_obs, clip_actions)
+    # env = RlGamesVecEnvWrapper(env, rl_device, clip_obs, clip_actions)
     
-    # register the environment to rl-games registry
-    # note: in agents configuration: environment name must be "rlgpu"
-    vecenv.register(
-        "IsaacRlgWrapper", lambda config_name, num_actors, **kwargs: RlGamesGpuEnv(config_name, num_actors, **kwargs)
-    )
-    env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
+    # # register the environment to rl-games registry
+    # # note: in agents configuration: environment name must be "rlgpu"
+    # vecenv.register(
+    #     "IsaacRlgWrapper", lambda config_name, num_actors, **kwargs: RlGamesGpuEnv(config_name, num_actors, **kwargs)
+    # )
+    # env_configurations.register("rlgpu", {"vecenv_type": "IsaacRlgWrapper", "env_creator": lambda **kwargs: env})
     
     agent = ESAgent(agent_cfg)
     
     # simulate environment
     while simulation_app.is_running():
-        agent.run(env=env, train=args_cli.train)
+        agent.run(env=env, test=args_cli.test)
     env.close()
 
 if __name__ == "__main__":

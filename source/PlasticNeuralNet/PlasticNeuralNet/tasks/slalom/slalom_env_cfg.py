@@ -86,7 +86,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
 
     contact_debug_vis = False
     contact_force = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*",
+        prim_path="/World/envs/env_.*/Robot/foot_.*",
         update_period=0.0,
         history_length=6,
         debug_vis=contact_debug_vis,
@@ -97,9 +97,9 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     viewer = ViewerCfg(eye=(2.0, 2.0, 2.0))
     
     # reward scale
-    lin_vel_weight = 5
-    heading_weight= -1.0
-    up_weight= 0 # -0.75
+    lin_vel_weight = 2
+    heading_weight= 0.5
+    up_weight= 0.5 # -0.75
     joint_torque_weight = -2.5e-5
     feet_air_time_weight = 0.0
     undesired_contact_weight = 0.0 # -3.0

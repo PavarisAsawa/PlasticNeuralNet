@@ -1,18 +1,18 @@
-from ES_classes import *
-from feedforward_neural_net_gpu import *
-from hebbian_neural_net import *
-from LSTM_neural_net import *
+from .ES_classes import *
+from .feedforward_neural_net_gpu import *
+from .hebbian_neural_net import *
+from .LSTM_neural_net import *
 from tqdm import tqdm
 import wandb
 import pickle
-from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 import copy
+import os
 
 class ESAgent:
     def __init__(self,agent_cfg):
         # Initialize ES parameters
         # self.POPSIZE             = agent_cfg["num_envs"]
-        self.POPSIZE             = 4096 # for initial only [Depening on parser]
+        self.POPSIZE             = agent_cfg["ES_params"]["POPSIZE"]
         self.RANK_FITNESS        = agent_cfg["ES_params"]["rank_fitness"]
         self.ANTITHETIC          = agent_cfg["ES_params"]["antithetic"]
         self.LEARNING_RATE       = agent_cfg["ES_params"]["learning_rate"]
@@ -54,6 +54,9 @@ class ESAgent:
         self.wandb_group = agent_cfg["wandb"]["wandb_group"]
         self.wandb_project = agent_cfg["wandb"]["wandb_project"]
 
+        # device
+        self.device = agent_cfg["rl_device"]
+
         if self.wandb_activate:
             run_name = f"{self.wandb_name}_{self.ARCHITECTURE_NAME}_{self.wandb_group}"
             wandb.init(
@@ -82,7 +85,7 @@ class ESAgent:
                         )
             self.dir_path = 'runs_ES/'+self.TASK+'/lstm/'
         
-        # Get Param from model
+        # Get *Number* of Param from model
         self.n_params_a_model = self.models.get_n_params_a_model()
     
         # Initialize OpenES Evolutionary Strategy Optimizer
@@ -108,10 +111,10 @@ class ESAgent:
 
             self.train_params = trained_data[0].best_param()
             self.solver = trained_data[0]
-            print('train_params number: ', len(train_params))
+            print('train_params number: ', len(self.train_params))
             
     
-    def run(self,env, train=True,checkpoint=None):
+    def run(self,env, test=False):
         """
         Run the ES agent on the environment.
         :param env: The environment to run the agent on.
@@ -120,35 +123,30 @@ class ESAgent:
         # ES code
         # Log data initialized
 
-        if train:   # Trainig Loop
-            self.run_train(env=env)
-        else:       # Playing Loop
+        if test:   # Trainig Loop
             pass
+        else:       # Playing Loop
+            self.run_train(env=env)
         
  
     def run_train(self,env):
         pop_mean_curve = np.zeros(self.EPOCHS)
         best_sol_curve = np.zeros(self.EPOCHS)
         eval_curve = np.zeros(self.EPOCHS)
-        
         for epoch in tqdm(range(self.EPOCHS)):
             # sample params from ES and set model params
             solutions = self.solver.ask()
             self.models.set_models_params(solutions)
+            total_rewards = torch.zeros(self.POPSIZE, device=self.device)
+            cumulative_reward = torch.zeros(self.POPSIZE , device=self.device)
             obs , _ = env.reset()
             
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
-                
-                actions = self.models.forward(obs['policy'])
+                actions = self.models.forward(obs["policy"])
                 next_obs, reward, terminated, truncated, _ = env.step(actions)
-                
-                reward_value = reward.item() # > int : 1
-                terminated_value = terminated.item() 
-                cumulative_reward += reward_value
-                done = terminated or truncated
-                
-                
+                cumulative_reward += reward
+                done = torch.logical_or(terminated, truncated)
                 obs = next_obs
                 # Set Objective Function to ES
                 total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
@@ -173,17 +171,27 @@ class ESAgent:
                             "mean" : np.mean(fitlist),
                             "best" : np.max(fitlist),
                             "worst": np.min(fitlist),
-                            "std"  : np.std(fitlist)
+                            "std"  : np.std(fitlist),
+                            "reward" : np.mean(cumulative_reward.cpu().numpy())
                             })
+            
             # Save model params and OpenES params
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 print('saving..')
+                # Create Folder
+                save_path = os.path.join(
+                self.dir_path,
+                f"{self.TASK}_{self.ARCHITECTURE_NAME}_{self.wandb_group}_"
+                f"{self.n_params_a_model}_{epoch}_{pop_mean_curve[epoch]:.2f}.pickle"
+                )
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                # Dump file
                 pickle.dump((
                     self.solver,
                     copy.deepcopy(self.models),
                     pop_mean_curve,
                     best_sol_curve,
-                    ), open(self.dir_path+self.TASK+'_'+self.ARCHITECTURE_NAME+'_' + self.wandb_group + '_' + str(self.n_params_a_model) +'_' + str(epoch) + '_' + str(pop_mean_curve[epoch])[:6] + '.pickle', 'wb'))
+                    ), open(save_path, 'wb'))
     
     def run_play(self,env):
     

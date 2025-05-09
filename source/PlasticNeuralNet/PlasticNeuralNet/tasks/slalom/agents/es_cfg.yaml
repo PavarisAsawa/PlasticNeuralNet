@@ -1,16 +1,13 @@
 
 # Task name - parse from the task name in the CLI
-task_name: ${task.name}
+task_name: null # task name is set on train file
 name : test_slalom      # Name for logging
 # experiment name. defaults to name of training config
 experiment: ''
-
 # if set to positive integer, overrides the default number of environments
 num_envs: ''
-
 # seed - set to -1 to choose random seed
 seed: -1
-
 # set the maximum number of learning iterations to train for. overrides default per-environment setting
 max_iterations: ''
 
@@ -46,22 +43,15 @@ mt_timeout: 300
 wandb :
   wandb_activate: False
   wandb_group: 'simple_loco'
-  wandb_name: ${train.params.config.name}
+  wandb_name: 'test_slalom'
   wandb_entity: ''
-  wandb_project: 'Slalom_PureHebb_Input51_RewardHeadDirection'
+  wandb_project: 'Slalom_test'
 
 # path to a kit app file
 kit_app: ''
 
 # Warp
 warp: False
-
-# set default task and default training config based on task
-defaults:
-  - _self_
-  - task: Slalom
-  - train: ${task}PPO
-  - override hydra/job_logging: disabled
 
 # Training params
 EPOCHS: 500                   # <---------------------------------- 100
@@ -74,21 +64,21 @@ custom_rewards: False
 
 # ES algorithm Standard
 ES_params:
-  # POPSIZE: 1024 # workstation (500)
+  POPSIZE: 1024 # workstation (500) # Default Condition if not parse argument
   rank_fitness: True
   antithetic: True
   learning_rate: 0.01 #0.1 - bing # 0.05:RBF
   learning_rate_decay: 0.9999 #0.999 - bing # 0.9999
-  sigma_init: 0.005 #0.1 -bing # 0.05 RBF
+  sigma_init: 0.05 #0.1 -bing # 0.05 RBF
   sigma_decay: 0.999
   learning_rate_limit: 0.001
   sigma_limit: 0.0001
 
 # model 
-model: lstm # ff, hebb, lstm
+model: hebb # ff, hebb, lstm
 model_type: 'parallel_Hebb'
-FF_ARCHITECTURE: [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
-HEBB_ARCHITECTURE: [51, 64, 32, 16] #[84, 64, 32, 16] # [num_input, num_hidd, num_output] Slalom Test
+FF_ARCHITECTURE: [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
+HEBB_ARCHITECTURE: [39, 64, 32, 16] #[84, 64, 32, 16] # [num_input, num_hidd, num_output] Slalom Test
 LSTM_ARCHITECTURE: [51, 20, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
 HEBB_init_wnoise: 0.04 #0.02 #0.01
 HEBB_norm: 'var' # var, max, clip
