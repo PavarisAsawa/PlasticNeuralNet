@@ -35,7 +35,13 @@ parser.add_argument(
     help="when given, log in wandb"
 )
 
+group = parser.add_mutually_exclusive_group(required=False)
+# Write on "model" argument to select the model type
+group.add_argument("--hebb", dest="model", action="store_const", const="hebb", help="Use Hebbian network")
+group.add_argument("--lstm", dest="model", action="store_const", const="lstm", help="Use LSTM network")
+group.add_argument( "--ff", dest="model", action="store_const", const="ff", help="Use Feed-Forward network")
 
+# Add Checkpoint argument
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
@@ -99,10 +105,13 @@ from utils.ES_agent import *
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with ES agent."""
     # --------------------------------- Setting up Agent --------------------------------- #
-    # Initialize ES parameters
+    # Initialize env device and number of environments
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    
+    # Initialize ES Model
+    agent_cfg["model"] = args_cli.model if args_cli.model is not None else agent_cfg["model"]
+    print(f"Using model: {agent_cfg['model']}")
+    # Initialize ES parameters
     agent_cfg["ES_params"]["POPSIZE"] = args_cli.num_envs if args_cli.num_envs is not None else agent_cfg["POPSIZE"]
     agent_cfg["USE_TRAIN_PARAM"] = True if args_cli.play else False
     agent_cfg["wandb"]["wandb_activate"] = args_cli.wandb
@@ -120,10 +129,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["num_envs"] = args_cli.num_envs if args_cli.num_envs is not None else agent_cfg["num_envs"]
     
     # Set checkpoint path
+        # self.train_ff_path = agent_cfg["train_ff_path"]
+        # self.train_hebb_path = agent_cfg["train_hebb_path"]
+        # self.train_lstm_path = agent_cfg["train_lstm_path"]
     if args_cli.checkpoint is not None:
-        resume_path = retrieve_file_path(args_cli.checkpoint)
-        agent_cfg["params"]["load_checkpoint"] = True
-        agent_cfg["params"]["load_path"] = resume_path
+        if args_cli.model == "hebb":
+            agent_cfg["train_hebb_path"] = args_cli.checkpoint
+        elif args_cli.model == "lstm":
+            agent_cfg["train_lstm_path"] = args_cli.checkpoint
+        elif args_cli.model == "ff":
+            agent_cfg["train_ff_path"] = args_cli.checkpoint
+            
         print(f"[INFO]: Loading model checkpoint from: {agent_cfg['params']['load_path']}")
     train_sigma = float(args_cli.sigma) if args_cli.sigma is not None else None
 
@@ -142,7 +158,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 
     # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "es", agent_cfg["name"])
+    log_root_path = os.path.join("run_ES", agent_cfg["task_name"], args_cli.checkpoint)
+    # log_root_path = os.path.join("logs", "es", agent_cfg["name"])
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
 
