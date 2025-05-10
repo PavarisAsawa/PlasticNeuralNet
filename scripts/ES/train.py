@@ -23,7 +23,7 @@ parser.add_argument(
 # )
 
 parser.add_argument(
-    "--test",
+    "--play",
     action="store_true",
     default=False,
     help="when given, run in test/play mode"
@@ -104,7 +104,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     
     agent_cfg["ES_params"]["POPSIZE"] = args_cli.num_envs if args_cli.num_envs is not None else agent_cfg["POPSIZE"]
-    agent_cfg["USE_TRAIN_PARAM"] = True if args_cli.test else False
+    agent_cfg["USE_TRAIN_PARAM"] = True if args_cli.play else False
     agent_cfg["wandb"]["wandb_activate"] = args_cli.wandb
     if args_cli.seed == -1:
         args_cli.seed = random.randint(0, 10000)
@@ -204,8 +204,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent = ESAgent(agent_cfg)
     
     # simulate environment
-    while simulation_app.is_running():
-        agent.run(env=env, test=args_cli.test)
+    # if args_cli.test:
+    #     while simulation_app.is_running():
+    #         agent.run(env=env, test=args_cli.test)
+    # else :
+    agent.run(env=env, test=args_cli.play)
     env.close()
 
 if __name__ == "__main__":
