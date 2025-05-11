@@ -7,6 +7,7 @@ import wandb
 import pickle
 import copy
 import os
+import datetime
 
 class ESAgent:
     def __init__(self,agent_cfg):
@@ -43,7 +44,8 @@ class ESAgent:
         self.TASK              = agent_cfg["task_name"]
         self.TEST              = agent_cfg["test"]
         if self.TEST:
-            self.USE_TRAIN_PARAM = True
+            self.USE_TRAIN_PARAM = True 
+        self.experiment     = agent_cfg["experiment"] # Name of experiemtn
 
         self.train_ff_path = agent_cfg["train_ff_path"]
         self.train_hebb_path = agent_cfg["train_hebb_path"]
@@ -55,6 +57,7 @@ class ESAgent:
         self.wandb_project = agent_cfg["wandb"]["wandb_project"]
 
         # device
+        
         self.device = agent_cfg["rl_device"]
 
         if self.wandb_activate:
@@ -67,47 +70,51 @@ class ESAgent:
             )
             
         # Initialize model
+        # dir path : set from experiment
+        # {model} path : set from checkpoint
         if self.ARCHITECTURE_NAME == 'ff':
             self.models = FeedForwardNet(popsize=self.POPSIZE,
                                     sizes=self.FF_ARCHITECTURE,
                                     )
-            self.dir_path = 'runs_ES/'+self.TASK+'/ff/'
+            self.dir_path = 'logs/'+'es/'+self.TASK+'/ff/'+self.experiment
         elif self.ARCHITECTURE_NAME == 'hebb':
             self.models = HebbianNet(popsize=self.POPSIZE, 
                                 sizes=self.HEBB_ARCHITECTURE,
                                 init_noise=self.HEBB_init_wnoise,
                                 norm_mode=self.HEBB_norm,
                                 )
-            self.dir_path = 'runs_ES/'+self.TASK+'/hebb/'
+            self.dir_path = 'logs/'+'es/'+self.TASK+'/hebb/'+self.experiment
         elif self.ARCHITECTURE_NAME == 'lstm':
             self.models = LSTMs(popsize=self.POPSIZE, 
                         arch=self.LSTM_ARCHITECTURE,
                         )
-            self.dir_path = 'runs_ES/'+self.TASK+'/lstm/'
+            self.dir_path = 'logs/'+'es/'+self.TASK+'/lstm/'+self.experiment
         
         # Get *Number* of Param from model
         self.n_params_a_model = self.models.get_n_params_a_model()
     
         # Initialize OpenES Evolutionary Strategy Optimizer
-        self.solver = OpenES(self.n_params_a_model,
-                popsize=self.POPSIZE,
-                rank_fitness=self.RANK_FITNESS,
-                antithetic=self.ANTITHETIC,
-                learning_rate=self.LEARNING_RATE,
-                learning_rate_decay=self.LEARNING_RATE_DECAY,
-                sigma_init=self.SIGMA_INIT,
-                sigma_decay=self.SIGMA_DECAY,
-                learning_rate_limit=self.LEARNING_RATE_LIMIT,
-                sigma_limit=self.SIGMA_LIMIT)
-        self.solver.set_mu(self.models.get_a_model_params())
+        if not self.TEST:
+            self.solver = OpenES(self.n_params_a_model,
+                    popsize=self.POPSIZE,
+                    rank_fitness=self.RANK_FITNESS,
+                    antithetic=self.ANTITHETIC,
+                    learning_rate=self.LEARNING_RATE,
+                    learning_rate_decay=self.LEARNING_RATE_DECAY,
+                    sigma_init=self.SIGMA_INIT,
+                    sigma_decay=self.SIGMA_DECAY,
+                    learning_rate_limit=self.LEARNING_RATE_LIMIT,
+                    sigma_limit=self.SIGMA_LIMIT)
+            self.solver.set_mu(self.models.get_a_model_params())
+            pass
 
         if self.USE_TRAIN_PARAM:
             if self.ARCHITECTURE_NAME == 'ff':
-                trained_data = pickle.load(open(self.dir_path+self.train_ff_path, 'rb'))
+                trained_data = pickle.load(open(self.dir_path+"/model/"+self.train_ff_path, 'rb'))
             if self.ARCHITECTURE_NAME == 'hebb':
-                trained_data = pickle.load(open(self.dir_path+self.train_hebb_path, 'rb'))
+                trained_data = pickle.load(open(self.dir_path+"/model/"+self.train_hebb_path, 'rb'))
             if self.ARCHITECTURE_NAME == 'lstm':
-                trained_data = pickle.load(open(self.dir_path+self.train_lstm_path, 'rb'))
+                trained_data = pickle.load(open(self.dir_path+"/model/"+self.train_lstm_path, 'rb'))
 
             self.train_params = trained_data[0].best_param()
             self.solver = trained_data[0]
@@ -124,7 +131,7 @@ class ESAgent:
         # Log data initialized
 
         if test:   # Trainig Loop
-            pass
+            self.run_play(env=env)
         else:       # Playing Loop
             self.run_train(env=env)
         
@@ -133,6 +140,13 @@ class ESAgent:
         pop_mean_curve = np.zeros(self.EPOCHS)
         best_sol_curve = np.zeros(self.EPOCHS)
         eval_curve = np.zeros(self.EPOCHS)
+
+        # log = dict()
+        # log["reward"] = []
+        # log["lin_vel"] = []
+        # log["heading"] = []
+        # log["up_right"] = []
+
         for epoch in tqdm(range(self.EPOCHS)):
             # sample params from ES and set model params
             solutions = self.solver.ask()
@@ -140,30 +154,60 @@ class ESAgent:
             total_rewards = torch.zeros(self.POPSIZE, device=self.device)
             cumulative_reward = torch.zeros(self.POPSIZE , device=self.device)
             obs , _ = env.reset()
-            
+
+
+            # log_upright = torch.zeros(self.POPSIZE, device=self.device)
+            # log_lin_vel = torch.zeros(self.POPSIZE, device=self.device)
+            # log_heading = torch.zeros(self.POPSIZE, device=self.device)
+
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
                 actions = self.models.forward(obs["policy"])
-                next_obs, reward, terminated, truncated, _ = env.step(actions)
+                next_obs, reward, terminated, truncated, extras = env.step(actions)
                 cumulative_reward += reward
                 done = torch.logical_or(terminated, truncated)
                 obs = next_obs
                 # Set Objective Function to ES
                 total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
+
+                # # Logging
+                # log_lin_vel += extras["log"]["lin_vel"]
+                # log_upright += extras["log"]["up_right"]
+                # log_heading += extras["log"]["heading"]
                 
             # Update to ES
             total_rewards_cpu = total_rewards.cpu().numpy()
             fitlist = list(total_rewards_cpu)
             self.solver.tell(fitlist)
-
             fit_arr = np.array(fitlist)
-
             print('epoch', epoch, 'mean', fit_arr.mean(), 
                   'best', fit_arr.max(), )
-
-
             pop_mean_curve[epoch] = fit_arr.mean()
             best_sol_curve[epoch] = fit_arr.max()
+
+        #     # # log
+        #     # lin_vel = np.mean((log_lin_vel/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+        #     # heading = np.mean((log_upright/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+        #     # upright = np.mean((log_heading/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+
+        #    # Save value
+        #     value_dir = os.path.join(self.dir_path, "value")
+            # os.makedirs(value_dir, exist_ok=True)
+            # log["reward"].append(fit_arr.mean())
+            # log["lin_vel"].append(lin_vel)
+            # log["heading"].append(heading)
+            # log["up_right"].append(upright)
+            # np.save( os.path.join(value_dir, "metrics.npy"),log ,allow_pickle=True )           
+             # np.save(os.path.join(value_dir, "lin_vel.npy"),np.stack(log["lin_vel"], axis=0))
+            # np.save(os.path.join(value_dir, "heading.npy"),np.stack(log["heading"], axis=0))
+            # np.save(os.path.join(value_dir, "up_right.npy"),np.stack(log["up_right"], axis=0))
+            # np.save(os.path.join(value_dir, "reward.npy"),np.stack(log["reward"], axis=0))
+
+
+            
+            print(f"Now time : {datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
+
+
 
             # WanDB Log data -------------------------------
             if self.wandb_activate:
@@ -172,18 +216,17 @@ class ESAgent:
                             "best" : np.max(fitlist),
                             "worst": np.min(fitlist),
                             "std"  : np.std(fitlist),
-                            "reward" : np.mean(cumulative_reward.cpu().numpy())
+                            # "reward" : np.mean(cumulative_reward.cpu().numpy()),
+                            # "lin_vel_value" : np.mean(lin_vel),
+                            # "heading_value" : np.mean(heading),
+                            # "up_right" : np.mean(upright),
                             })
-            
+ 
             # Save model params and OpenES params
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 print('saving..')
                 # Create Folder
-                save_path = os.path.join(
-                self.dir_path,
-                f"{self.TASK}_{self.ARCHITECTURE_NAME}_{self.wandb_group}_"
-                f"{self.n_params_a_model}_{epoch}_{pop_mean_curve[epoch]:.2f}.pickle"
-                )
+                save_path = os.path.join(self.dir_path, "model",f"model_{epoch}.pickle" )
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 # Dump file
                 pickle.dump((
@@ -192,13 +235,17 @@ class ESAgent:
                     pop_mean_curve,
                     best_sol_curve,
                     ), open(save_path, 'wb'))
+        env.close()
+        if self.wandb_activate:
+            wandb.finish()
+        
     
     def run_play(self,env):
     
         for epoch in tqdm(range(self.EPOCHS)):
             # sample params from ES and set model params
             self.models.set_a_model_params(self.train_params)
-            obs = env.reset()
+            obs , _ = env.reset()
             
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
@@ -206,15 +253,12 @@ class ESAgent:
                 actions = self.models.forward(obs['policy'])
                 next_obs, reward, terminated, truncated, _ = env.step(actions)
                 obs = next_obs
-                total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
                 
             # Update to ES
-            total_rewards_cpu = total_rewards.cpu().numpy()
-            fitlist = list(total_rewards_cpu)
-            self.solver.tell(fitlist)
 
-            fit_arr = np.array(fitlist)
-
-            print('epoch', epoch, 'mean', fit_arr.mean(), 
-                  'best', fit_arr.max(), )
+            # print('epoch', epoch, 'mean', fit_arr.mean(), 
+            #       'best', fit_arr.max(), )
+        env.close()
+        if self.wandb_activate:
+            wandb.finish()
 

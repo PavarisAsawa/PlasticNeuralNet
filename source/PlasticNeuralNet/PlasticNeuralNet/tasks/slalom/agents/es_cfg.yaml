@@ -67,9 +67,9 @@ ES_params:
   POPSIZE: 1024 # workstation (500) # Default Condition if not parse argument
   rank_fitness: True
   antithetic: True
-  learning_rate: 0.01 #0.1 - bing # 0.05:RBF
+  learning_rate: 0.1 #0.1 - bing # 0.05:RBF
   learning_rate_decay: 0.9999 #0.999 - bing # 0.9999
-  sigma_init: 0.05 #0.1 -bing # 0.05 RBF
+  sigma_init: 0.05 # 0.05 #0.1 -bing # 0.05 RBF
   sigma_decay: 0.999
   learning_rate_limit: 0.001
   sigma_limit: 0.0001
@@ -77,7 +77,7 @@ ES_params:
 # model 
 model: hebb # ff, hebb, lstm
 model_type: 'parallel_Hebb'
-FF_ARCHITECTURE: [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
+FF_ARCHITECTURE: [39, 64, 32, 16] # [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
 HEBB_ARCHITECTURE: [39, 64, 32, 16] #[84, 64, 32, 16] # [num_input, num_hidd, num_output] Slalom Test
 LSTM_ARCHITECTURE: [51, 20, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
 HEBB_init_wnoise: 0.04 #0.02 #0.01

@@ -75,6 +75,24 @@ class SlalomLocomotionTask(DirectRLEnv):
         #     [self._ants._body_indices[j] for j in force_links], device=self._device, dtype=torch.long
         # )
 
+        # Extras for Log / Analyze
+        # Logging
+
+        # self._episode_reward = {
+        #     key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        #     for key in [
+        #         "lin_vel_reward",
+        #         "heading_reward",
+        #         "up_reward",
+        #     ]
+        # }
+
+        # self.vel_loc = torch.zeros(self.num_envs , 3 , dtype=torch.float32, device=self.sim.device)
+        # self.heading_proj = torch.zeros(self.num_envs , dtype=torch.float32, device=self.sim.device)
+        # self.up_proj = torch.zeros(self.num_envs  , dtype=torch.float32, device=self.sim.device)
+
+
+
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
@@ -164,16 +182,29 @@ class SlalomLocomotionTask(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        total_reward = compute_rewards(
-            self.cfg.lin_vel_weight,
-            self.cfg.heading_weight,
-            self.cfg.up_weight,
-            self.vel_loc[:, 0],
-            self.heading_proj,
-            self.up_proj,
-        )
+        # speed reward
+        lin_vel_reward = self.vel_loc[:, 0] * self.cfg.lin_vel_weight
 
-        return total_reward
+        # heading rewards    
+        heading_reward = torch.where(self.heading_proj > 0.95 , 0 , -0.5)    *   self.cfg.heading_weight
+
+        # aligning up axis of robot and environment
+        up_reward = torch.where(torch.abs(self.up_proj) < 0.45, 0 , -0.5)  *   self.cfg.up_weight
+
+        rewards = {
+            "lin_vel_reward" : lin_vel_reward , 
+            "heading_reward" : heading_reward ,
+            "up_reward" : up_reward,
+        }
+
+        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        # for key, value in rewards.items():
+        #     self._episode_reward[key] += value
+
+        return reward
+
+
+
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self._compute_intermediate_values()
@@ -217,6 +248,21 @@ class SlalomLocomotionTask(DirectRLEnv):
         to_target[:, 2] = 0.0
         self.potentials[env_ids] = -torch.norm(to_target, p=2, dim=-1) / self.cfg.sim.dt
 
+        # Logging Reward
+
+        # extras = dict()
+        # for key in self._episode_reward.keys():
+        #     episodic_sum_avg = torch.mean(self._episode_reward[key][env_ids])
+        #     extras[key] = episodic_sum_avg / self.max_episode_length
+        #     self._episode_reward[key][env_ids] = 0.0
+        # self.extras["log"].update(extras)
+        # # # Logging Value
+        # extras = dict()
+        # extras["lin_vel"] = torch.mean(self.vel_loc[:,0])
+        # extras["heading"] = torch.mean(self.heading_proj)
+        # extras["up_right"] = torch.mean(self.up_proj)
+        # self.extras["log"].update(extras)
+
         self._compute_intermediate_values()
 
     # def _get_foot_status(self):
@@ -239,35 +285,6 @@ class SlalomLocomotionTask(DirectRLEnv):
         # threshold at 1.0
         foot_status = (foot_force_norm > 1.0).float()      # (num_envs, 4)
         return foot_status
-
-@torch.jit.script
-def compute_rewards(
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : torch.Tensor,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-):
-    '''
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : float,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-    '''
-    # speed reward
-    lin_vel_reward = lin_vel * lin_vel_weight
-
-    # heading rewards    
-    heading_reward = torch.where(heading_proj > 0.95 , 0 , -0.5)    *   heading_weight
-
-    # aligning up axis of robot and environment
-    up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , -0.5)  *   up_weight
-
-    total_reward = lin_vel_reward + heading_reward + up_reward
-    return total_reward
 
 
 @torch.jit.script
