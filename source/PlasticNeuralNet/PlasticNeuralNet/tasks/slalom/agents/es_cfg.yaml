@@ -69,7 +69,7 @@ ES_params:
   antithetic: True
   learning_rate: 0.1 #0.1 - bing # 0.05:RBF
   learning_rate_decay: 0.9999 #0.999 - bing # 0.9999
-  sigma_init: 0.05 # 0.05 #0.1 -bing # 0.05 RBF
+  sigma_init: 0.1 # 0.05 #0.1 -bing # 0.05 RBF
   sigma_decay: 0.999
   learning_rate_limit: 0.001
   sigma_limit: 0.0001

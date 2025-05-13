@@ -79,7 +79,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     decimation = 4 # controlFrequencyInv
     episode_length_s = 30
     action_space = 16 # for gecko
-    observation_space = 76 # for gecko
+    observation_space = 39 # 76 # for gecko
     state_space = 0
     action_scale = 1
     angular_velocity_scale = 1

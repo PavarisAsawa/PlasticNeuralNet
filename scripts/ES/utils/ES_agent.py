@@ -61,7 +61,8 @@ class ESAgent:
         self.device = agent_cfg["rl_device"]
 
         if self.wandb_activate:
-            run_name = f"{self.wandb_name}_{self.ARCHITECTURE_NAME}_{self.wandb_group}"
+            # run_name = f"{self.wandb_name}_{self.ARCHITECTURE_NAME}_{self.wandb_group}"
+            run_name = f"{self.experiment}"
             wandb.init(
                 project=self.wandb_project,
                 group=self.wandb_group,
@@ -141,11 +142,11 @@ class ESAgent:
         best_sol_curve = np.zeros(self.EPOCHS)
         eval_curve = np.zeros(self.EPOCHS)
 
-        # log = dict()
-        # log["reward"] = []
-        # log["lin_vel"] = []
-        # log["heading"] = []
-        # log["up_right"] = []
+        log = dict()
+        log["reward"] = []
+        log["lin_vel"] = []
+        log["heading"] = []
+        log["up_right"] = []
 
         for epoch in tqdm(range(self.EPOCHS)):
             # sample params from ES and set model params
@@ -156,9 +157,9 @@ class ESAgent:
             obs , _ = env.reset()
 
 
-            # log_upright = torch.zeros(self.POPSIZE, device=self.device)
-            # log_lin_vel = torch.zeros(self.POPSIZE, device=self.device)
-            # log_heading = torch.zeros(self.POPSIZE, device=self.device)
+            log_upright = torch.zeros(self.POPSIZE, device=self.device)
+            log_lin_vel = torch.zeros(self.POPSIZE, device=self.device)
+            log_heading = torch.zeros(self.POPSIZE, device=self.device)
 
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
@@ -170,10 +171,10 @@ class ESAgent:
                 # Set Objective Function to ES
                 total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
 
-                # # Logging
-                # log_lin_vel += extras["log"]["lin_vel"]
-                # log_upright += extras["log"]["up_right"]
-                # log_heading += extras["log"]["heading"]
+                # Logging
+                log_lin_vel += extras["log"]["lin_vel"]
+                log_upright += extras["log"]["up_right"]
+                log_heading += extras["log"]["heading"]
                 
             # Update to ES
             total_rewards_cpu = total_rewards.cpu().numpy()
@@ -185,19 +186,19 @@ class ESAgent:
             pop_mean_curve[epoch] = fit_arr.mean()
             best_sol_curve[epoch] = fit_arr.max()
 
-        #     # # log
-        #     # lin_vel = np.mean((log_lin_vel/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-        #     # heading = np.mean((log_upright/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-        #     # upright = np.mean((log_heading/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+            # log
+            lin_vel = np.mean((log_lin_vel/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+            heading = np.mean((log_upright/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+            upright = np.mean((log_heading/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
 
-        #    # Save value
-        #     value_dir = os.path.join(self.dir_path, "value")
-            # os.makedirs(value_dir, exist_ok=True)
-            # log["reward"].append(fit_arr.mean())
-            # log["lin_vel"].append(lin_vel)
-            # log["heading"].append(heading)
-            # log["up_right"].append(upright)
-            # np.save( os.path.join(value_dir, "metrics.npy"),log ,allow_pickle=True )           
+           # Save value
+            value_dir = os.path.join(self.dir_path, "value")
+            os.makedirs(value_dir, exist_ok=True)
+            log["reward"].append(fit_arr.mean())
+            log["lin_vel"].append(lin_vel)
+            log["heading"].append(heading)
+            log["up_right"].append(upright)
+            np.save( os.path.join(value_dir, "metrics.npy"),log ,allow_pickle=True )           
              # np.save(os.path.join(value_dir, "lin_vel.npy"),np.stack(log["lin_vel"], axis=0))
             # np.save(os.path.join(value_dir, "heading.npy"),np.stack(log["heading"], axis=0))
             # np.save(os.path.join(value_dir, "up_right.npy"),np.stack(log["up_right"], axis=0))
@@ -216,10 +217,10 @@ class ESAgent:
                             "best" : np.max(fitlist),
                             "worst": np.min(fitlist),
                             "std"  : np.std(fitlist),
-                            # "reward" : np.mean(cumulative_reward.cpu().numpy()),
-                            # "lin_vel_value" : np.mean(lin_vel),
-                            # "heading_value" : np.mean(heading),
-                            # "up_right" : np.mean(upright),
+                            "reward" : np.mean(cumulative_reward.cpu().numpy()),
+                            "lin_vel_value" : np.mean(lin_vel),
+                            "heading_value" : np.mean(heading),
+                            "up_right" : np.mean(upright),
                             })
  
             # Save model params and OpenES params

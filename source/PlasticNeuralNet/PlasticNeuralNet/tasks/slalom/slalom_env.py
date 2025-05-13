@@ -78,18 +78,18 @@ class SlalomLocomotionTask(DirectRLEnv):
         # Extras for Log / Analyze
         # Logging
 
-        # self._episode_reward = {
-        #     key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        #     for key in [
-        #         "lin_vel_reward",
-        #         "heading_reward",
-        #         "up_reward",
-        #     ]
-        # }
+        self._episode_reward = {
+            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+            for key in [
+                "lin_vel_reward",
+                "heading_reward",
+                "up_reward",
+            ]
+        }
 
-        # self.vel_loc = torch.zeros(self.num_envs , 3 , dtype=torch.float32, device=self.sim.device)
-        # self.heading_proj = torch.zeros(self.num_envs , dtype=torch.float32, device=self.sim.device)
-        # self.up_proj = torch.zeros(self.num_envs  , dtype=torch.float32, device=self.sim.device)
+        self.vel_loc = torch.zeros(self.num_envs , 3 , dtype=torch.float32, device=self.sim.device)
+        self.heading_proj = torch.zeros(self.num_envs , dtype=torch.float32, device=self.sim.device)
+        self.up_proj = torch.zeros(self.num_envs  , dtype=torch.float32, device=self.sim.device)
 
 
 
@@ -250,18 +250,19 @@ class SlalomLocomotionTask(DirectRLEnv):
 
         # Logging Reward
 
-        # extras = dict()
-        # for key in self._episode_reward.keys():
-        #     episodic_sum_avg = torch.mean(self._episode_reward[key][env_ids])
-        #     extras[key] = episodic_sum_avg / self.max_episode_length
-        #     self._episode_reward[key][env_ids] = 0.0
-        # self.extras["log"].update(extras)
-        # # # Logging Value
-        # extras = dict()
-        # extras["lin_vel"] = torch.mean(self.vel_loc[:,0])
-        # extras["heading"] = torch.mean(self.heading_proj)
-        # extras["up_right"] = torch.mean(self.up_proj)
-        # self.extras["log"].update(extras)
+        self.extras["log"] = dict()
+        extras = dict() # Temporary Buffer
+        for key in self._episode_reward.keys():
+            episodic_sum_avg = torch.mean(self._episode_reward[key][env_ids])
+            extras[key] = episodic_sum_avg / self.max_episode_length
+            self._episode_reward[key][env_ids] = 0.0
+        self.extras["log"].update(extras)
+        # # Logging Value
+        extras = dict()
+        extras["lin_vel"] = torch.mean(self.vel_loc[:,0])
+        extras["heading"] = torch.mean(self.heading_proj)
+        extras["up_right"] = torch.mean(self.up_proj)
+        self.extras["log"].update(extras)
 
         self._compute_intermediate_values()
 
