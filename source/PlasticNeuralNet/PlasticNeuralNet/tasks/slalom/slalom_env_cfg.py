@@ -84,7 +84,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     action_scale = 1
     angular_velocity_scale = 1
 
-    contact_debug_vis = False
+    contact_debug_vis = True
     contact_force = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/foot_.*",
         update_period=0.0,
