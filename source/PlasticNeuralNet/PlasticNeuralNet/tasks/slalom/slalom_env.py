@@ -42,9 +42,7 @@ class SlalomLocomotionTask(DirectRLEnv):
 
 
         # define target pos to forward in X-axis
-        self.targets = torch.tensor([1000, 0, 0], dtype=torch.float32, device=self.sim.device).repeat(
-            (self.num_envs, 1)
-        )
+        self.targets = torch.tensor([1000, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
 
         # robot posture vector
@@ -202,8 +200,6 @@ class SlalomLocomotionTask(DirectRLEnv):
         #     self._episode_reward[key] += value
 
         return reward
-
-
 
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
