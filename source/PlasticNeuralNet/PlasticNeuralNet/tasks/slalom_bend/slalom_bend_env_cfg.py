@@ -14,9 +14,11 @@ import numpy as np
 import isaacsim.core.utils.torch as torch_utils
 
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
+from PlasticNeuralNet.assets.robots.slalom_bend import SLALOM_BEND_CFG
+
 
 @configclass
-class SlalomEnvCfg(DirectRLEnvCfg):
+class SlalomBendEnvCfg(DirectRLEnvCfg):
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=0.005,
@@ -51,8 +53,9 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     )
 
     # robot
-    robot : ArticulationCfg = SLALOM_CFG.replace(
+    robot : ArticulationCfg = SLALOM_BEND_CFG.replace(
         prim_path="/World/envs/env_.*/Robot")
+
     
     # terrain
     terrain = TerrainImporterCfg(
@@ -91,8 +94,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
         history_length=6,
         debug_vis=contact_debug_vis,
         track_air_time = True
-        )
-    
+        )    
     # Set View
     viewer = ViewerCfg(eye=(2.0, 2.0, 2.0))
     

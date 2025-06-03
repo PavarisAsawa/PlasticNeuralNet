@@ -35,19 +35,24 @@ simulation_app = app_launcher.app
 
 import torch
 
-from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.envs import ManagerBasedRLEnv , DirectRLEnv
 
 from isaaclab_tasks.manager_based.classic.cartpole.cartpole_env_cfg import CartpoleEnvCfg
 from PlasticNeuralNet.tasks.slalom.slalom_env_cfg import SlalomEnvCfg
+from PlasticNeuralNet.tasks.slalom_bend.slalom_bend_env_cfg import SlalomBendEnvCfg
 
 def main():
     """Main function."""
     # create environment configuration
-    env_cfg = SlalomEnvCfg()
+    # env_cfg = SlalomEnvCfg()
+    env_cfg = SlalomBendEnvCfg()
+
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.sim.device = args_cli.device
     # setup RL environment
-    env = ManagerBasedRLEnv(cfg=env_cfg)
+    # env = ManagerBasedRLEnv(cfg=env_cfg)
+    env =DirectRLEnv(cfg=env_cfg)
+
 
     # simulate physics
     count = 0
