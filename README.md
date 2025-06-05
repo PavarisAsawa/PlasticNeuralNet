@@ -1,4 +1,7 @@
-# Template for Isaac Lab Projects
+# Hebbian Network for Adaptive Locomotion
+
+## Content
+
 
 ## Installation
 
@@ -7,7 +10,6 @@
 - Clone this repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
 
 ```bash
-# Option 1: HTTPS
 git clone https://github.com/PavarisAsawa/PlasticNeuralNet.git
 ```
 
@@ -15,7 +17,7 @@ git clone https://github.com/PavarisAsawa/PlasticNeuralNet.git
 - Using a python interpreter that has Isaac Lab installed, install the library
 
 ```bash
-cd IsaacLabExtensionTemplate
+cd PlasticNeuralNet
 python -m pip install -e source/PlasticNeuralNet
 ```
 
@@ -35,11 +37,16 @@ Customize training parameters via CLI (without modifying the config file)
 ```bash
 python script/ES/train.py --task default --num_envs 1024 --ff --headless --wandb
 ```
-- `--task <TASK_NAME>`: Select the task by specifying its name or ID.
-- `--num_envs <N>`: Set the number of parallel environments or population size.
-- `--ff` , `--hebb` , `--lstm`: Use a Feedforward Neural Network (instead of default model).
-- `--headless`: Run simulation without GUI (useful for remote or server environments).
-- `--wandb`: Enable logging of training metrics to Weights & Biases.
+
+
+| Parameter | value    | Description                |
+| :-------- | :------- | :------------------------- |
+| `--task` | `TASK_NAME` | **Required**. Select the task by specifying its name or ID |
+| `--num_envs` | `N` | Set the number of parallel environments or population size.|
+|`--ff` , `--hebb` , `--lstm`| None | Use a other Neural Network model (instead of default model).
+| `--headless` | None | Run simulation without GUI (useful for remote or server environments).|
+| `--wandb` | None | Enable logging of training metrics to Weights & Biases.|
+
 
 ## Playing 
 path to collect the model is following 
