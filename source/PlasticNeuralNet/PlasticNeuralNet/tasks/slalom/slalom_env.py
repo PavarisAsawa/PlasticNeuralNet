@@ -180,8 +180,8 @@ class SlalomLocomotionTask(DirectRLEnv):
         }
 
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
-        # for key, value in rewards.items():
-        #     self._episode_reward[key] += value
+        for key, value in rewards.items():
+            self._episode_reward[key] += value
 
         return reward
 
