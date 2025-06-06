@@ -79,7 +79,7 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     decimation = 4 # controlFrequencyInv
     episode_length_s = 30
     action_space = 16 # for gecko
-    observation_space = 39 # 76 # for gecko
+    observation_space = 55 # 76 # for gecko
     state_space = 0
     action_scale = 1
     angular_velocity_scale = 1
@@ -97,9 +97,6 @@ class SlalomEnvCfg(DirectRLEnvCfg):
     viewer = ViewerCfg(eye=(2.0, 2.0, 2.0))
     
     # reward scale
-    lin_vel_weight = 2
-    heading_weight= 0.5
-    up_weight= 0.5 # -0.75
-    joint_torque_weight = -2.5e-5
-    feet_air_time_weight = 0.0
-    undesired_contact_weight = 0.0 # -3.0
+    lin_vel_weight = 2 # 2
+    heading_weight= 0.0 # 0.5
+    up_weight= 0.0 # 0.5

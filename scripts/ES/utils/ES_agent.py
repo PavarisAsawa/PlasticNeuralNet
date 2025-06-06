@@ -160,6 +160,9 @@ class ESAgent:
             log_upright = torch.zeros(self.POPSIZE, device=self.device)
             log_lin_vel = torch.zeros(self.POPSIZE, device=self.device)
             log_heading = torch.zeros(self.POPSIZE, device=self.device)
+            log_lin_vel_rew = torch.zeros(self.POPSIZE, device=self.device)
+            log_upright_rew = torch.zeros(self.POPSIZE, device=self.device)
+            log_heading_rew = torch.zeros(self.POPSIZE, device=self.device)
 
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
@@ -175,6 +178,11 @@ class ESAgent:
                 log_lin_vel += extras["log"]["lin_vel"]
                 log_upright += extras["log"]["up_right"]
                 log_heading += extras["log"]["heading"]
+
+                log_lin_vel_rew += extras["log"]["lin_vel_reward"]
+                log_upright_rew += extras["log"]["up_reward"]
+                log_heading_rew += extras["log"]["heading_reward"]
+
                 
             # Update to ES
             total_rewards_cpu = total_rewards.cpu().numpy()
@@ -183,12 +191,6 @@ class ESAgent:
             fitlist = list(total_rewards_cpu)
             self.solver.tell(fitlist)
             fit_arr = np.array(fitlist)
-            
-            # print(cumulative_reward[0])
-            # print(total_rewards_cpu[0])
-            # print(fitlist[0])
-            # print(fit_arr)
-            # print(fit_arr.mean(dtype=np.float64))
 
             # print('epoch', epoch, 'mean', fit_arr.mean(dtype=np.float64), 
             print('epoch', epoch, 'mean', np.nanmean(fit_arr), 
@@ -201,6 +203,10 @@ class ESAgent:
             heading = np.mean((log_upright/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
             upright = np.mean((log_heading/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
 
+            lin_vel_rew = np.mean((log_lin_vel_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+            heading_rew = np.mean((log_upright_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+            upright_rew = np.mean((log_heading_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
+
            # Save value
             value_dir = os.path.join(self.dir_path, "value")
             os.makedirs(value_dir, exist_ok=True)
@@ -208,6 +214,7 @@ class ESAgent:
             log["lin_vel"].append(lin_vel)
             log["heading"].append(heading)
             log["up_right"].append(upright)
+
             np.save( os.path.join(value_dir, "metrics.npy"),log ,allow_pickle=True )           
              # np.save(os.path.join(value_dir, "lin_vel.npy"),np.stack(log["lin_vel"], axis=0))
             # np.save(os.path.join(value_dir, "heading.npy"),np.stack(log["heading"], axis=0))
@@ -231,6 +238,9 @@ class ESAgent:
                             "lin_vel_value" : np.mean(lin_vel),
                             "heading_value" : np.mean(heading),
                             "up_right" : np.mean(upright),
+                            "lin_vel_reward" : np.mean(lin_vel_rew),
+                            "heading_reward" : np.mean(heading_rew),
+                            "up_right_reward" : np.mean(upright_rew)
                             })
  
             # Save model params and OpenES params

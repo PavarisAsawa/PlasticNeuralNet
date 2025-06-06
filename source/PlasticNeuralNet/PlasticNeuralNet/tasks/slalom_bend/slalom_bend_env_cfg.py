@@ -65,8 +65,8 @@ class SlalomBendEnvCfg(DirectRLEnvCfg):
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="average",
             restitution_combine_mode="average",
-            static_friction=1.0,
-            dynamic_friction=1.0,
+            static_friction=1.0, # defautl 1.0 
+            dynamic_friction=1.0, # defautl 1.0 
             restitution=0.0,
         ),
         debug_vis=False,
@@ -85,12 +85,12 @@ class SlalomBendEnvCfg(DirectRLEnvCfg):
     action_space = 19 
     # action_space = 10
 
-    observation_space = 39 # 76 # for gecko
+    observation_space = 26 # 76 # for gecko
     state_space = 0
     action_scale = 1
     angular_velocity_scale = 1
 
-    contact_debug_vis = True
+    contact_debug_vis = False
     contact_force = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/foot_.*",
         update_period=0.0,

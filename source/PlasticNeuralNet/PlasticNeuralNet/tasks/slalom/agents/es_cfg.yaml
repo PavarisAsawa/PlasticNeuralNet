@@ -45,7 +45,7 @@ wandb :
   wandb_group: 'simple_loco'
   wandb_name: 'test_slalom'
   wandb_entity: ''
-  wandb_project: 'Slalom_test'
+  wandb_project: 'Slalom_beding'
 
 # path to a kit app file
 kit_app: ''
@@ -77,8 +77,8 @@ ES_params:
 # model 
 model: hebb # ff, hebb, lstm
 model_type: 'parallel_Hebb'
-FF_ARCHITECTURE: [39, 64, 32, 16] # [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
-HEBB_ARCHITECTURE: [39, 64, 32, 16] #[84, 64, 32, 16] # [num_input, num_hidd, num_output] Slalom Test
+FF_ARCHITECTURE: [23, 64, 32, 16] # [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
+HEBB_ARCHITECTURE: [55, 128, 64, 16]  # [num_input, num_hidd, num_output] Slalom Test
 LSTM_ARCHITECTURE: [51, 20, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
 HEBB_init_wnoise: 0.04 #0.02 #0.01
 HEBB_norm: 'var' # var, max, clip

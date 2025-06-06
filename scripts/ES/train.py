@@ -11,7 +11,7 @@ parser.add_argument("--video_length", type=int, default=500, help="Length of the
 parser.add_argument("--video_interval", type=int, default=5000, help="Interval between video recordings (in steps).")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=42, help="Seed used for the environment")
+parser.add_argument("--seed", type=int, default=-1, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
@@ -79,8 +79,6 @@ from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 import PlasticNeuralNet.tasks.slalom.slalom_env
-import PlasticNeuralNet.tasks.slalom.slalom_fullstate_env
-import PlasticNeuralNet.tasks.slalom.slalom_fullstate2_env
 import PlasticNeuralNet.tasks.anymal.anymal_c_env
 
 from utils.ES_classes import *

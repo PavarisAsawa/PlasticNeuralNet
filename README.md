@@ -49,7 +49,7 @@ Other important parameters for training ES agents are listed in the table
 | Parameter | value    |Description                |
 | :-------- | :------- |:------------------------- |
 | `--task` | `TASK_NAME` | **Required**. Select the task by specifying its name or ID |
-| `--num_envs` | **INT** | Set the number of parallel environments or population size.|
+| `--num_envs` | **INT** | Set the number of parallel environments or population size*(must be even numbers)*.|
 |`--ff` , `--hebb` ,`--lstm` | None | Use a other Neural Network model (instead model in configure file).
 | `--headless` | None | Run simulation without GUI (useful for remote or server environments).|
 | `--wandb` | None | Enable logging of training metrics to Weights & Biases.|

@@ -1,53 +1,46 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, Articulation, AssetBaseCfg
-from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg , ViewerCfg
-from isaaclab.utils import configclass
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg ,PhysxCfg , RigidBodyMaterialCfg, RigidBodyPropertiesCfg
-from isaaclab.terrains import TerrainImporterCfg
-from isaaclab.sensors import ContactSensorCfg , ContactSensor
+from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
+from isaaclab.sensors import ContactSensor
 
 import math
 import torch
 import numpy as np
 
-from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate , quat_rotate
+from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate
 import isaacsim.core.utils.torch as torch_utils
 
 from PlasticNeuralNet.assets.robots.slalom import SLALOM_CFG
-from .slalom_env_cfg import SlalomEnvCfg
-    
-class SlalomFullStateLocomotionTask(DirectRLEnv):
-    cfg: SlalomEnvCfg
+from .slalom_bend_env_cfg import SlalomBendEnvCfg
 
-    def __init__(self, cfg: SlalomEnvCfg, render_mode: str | None = None, **kwargs):
+
+class SlalomBendLocomotionTask(DirectRLEnv):
+    cfg: SlalomBendEnvCfg
+
+    def __init__(self, cfg: SlalomBendEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         
         # Define number of spaces
         self.num_actions = self.cfg.action_space
         self.num_observations = self.cfg.observation_space
         self.action_scale = self.cfg.action_scale
-        # self.angular_velocity_scale = self.cfg.angular_velocity_scale
         
         # set action
         self.actions = torch.zeros((self.num_envs, self.num_actions) , device=self.sim.device )
         self.prev_actions = torch.zeros((self.num_envs, self.num_actions) , device=self.sim.device)
 
-        # init gear ratio of (Gecko no use for now)
-        # self.joint_gears = torch.tensor(np.repeat(8,self.cfg.action_space), dtype=torch.float32, device=self.device)
-        # self.motor_effort_ratio = torch.ones_like(self.joint_gears, device=self.sim.device)
-        
         # define joint dof index
         self._joint_dof_idx, _ = self.robot.find_joints(".*")
+        # print(_)
+        # print("--------------------")
+        # print(self._joint_dof_idx)
         # set dof limit
         self.dof_limits_lower = self.robot.data.soft_joint_pos_limits[0, :, 0] 
         self.dof_limits_upper = self.robot.data.soft_joint_pos_limits[0, :, 1]
 
 
         # define target pos to forward in X-axis
-        self.targets = torch.tensor([1000, 0, 0], dtype=torch.float32, device=self.sim.device).repeat(
-            (self.num_envs, 1)
-        )
+        self.targets = torch.tensor([1000, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
 
         # robot posture vector
@@ -65,30 +58,33 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
 
         # Foot Contact
         self.foot_contact_force = torch.zeros(self.num_envs , 4 , dtype=torch.float32, device=self.sim.device)
-        self.foot_names   = ["foot_lf", "foot_rf", "foot_lh", "foot_rh"]
-        self.foot_indices = torch.tensor(
-            [self.robot.data.body_names.index(n) for n in self.foot_names],
-            dtype=torch.long,
-            device=self.sim.device,
-        )
-        
-        # Set view Frame
-        
+        self.foot_contact_status = torch.zeros(self.num_envs , 4 , dtype=torch.float32, device=self.sim.device)
+        # Foot indices
+        self.foot_indices , self.foot_name = self.robot.find_bodies("foot_.*")  # force_links = ["foot_lf", "foot_rf", "foot_lh", "foot_rh"]
+        self.body_indices , self.body_name = self.robot.find_joints("joint_.*")
+       
+        # Extras for Log / Analyze
+        # Logging
+
+        self._episode_reward = {
+            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+            for key in [
+                "lin_vel_reward",
+                "heading_reward",
+                "up_reward",
+            ]
+        }
+
+        self.vel_loc = torch.zeros(self.num_envs , 3 , dtype=torch.float32, device=self.sim.device)
+        self.heading_proj = torch.zeros(self.num_envs , dtype=torch.float32, device=self.sim.device)
+        self.up_proj = torch.zeros(self.num_envs  , dtype=torch.float32, device=self.sim.device)
 
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
-
-        # Add contact sensor to scene
-        self.contact_sensor_lf = ContactSensor(self.cfg.contact_force_lf)
-        self.contact_sensor_rf = ContactSensor(self.cfg.contact_force_rf)
-        self.contact_sensor_lh = ContactSensor(self.cfg.contact_force_lh)
-        self.contact_sensor_rh = ContactSensor(self.cfg.contact_force_rh)
-        self.scene.sensors["contact_sensor_lf"] = self.contact_sensor_lf
-        self.scene.sensors["contact_sensor_rf"] = self.contact_sensor_rf
-        self.scene.sensors["contact_sensor_lh"] = self.contact_sensor_lh
-        self.scene.sensors["contact_sensor_rh"] = self.contact_sensor_rh
-
+        # Add contact sensor
+        self.contact_sensor = ContactSensor(self.cfg.contact_force)
+        self.scene.sensors["contact_sensor"] = self.contact_sensor
         # terrain
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -103,7 +99,6 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self.actions = actions.clone()
@@ -121,8 +116,9 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         self.torso_position, self.torso_rotation = self.robot.data.root_pos_w, self.robot.data.root_quat_w
         # get vel
         self.velocity, self.ang_velocity = self.robot.data.root_lin_vel_w, self.robot.data.root_ang_vel_w
-        # get joint position , joint velocity , joint effort 
-        self.dof_pos, self.dof_vel, self.dof_effort = self.robot.data.joint_pos, self.robot.data.joint_vel , self.robot.data.applied_torque
+        # get joint position and joint velocity
+        self.dof_pos, self.dof_vel = self.robot.data.joint_pos, self.robot.data.joint_vel
+        
         # compute some useful value 
         (
             self.up_proj,
@@ -156,55 +152,41 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         )
 
     def _get_observations(self) -> dict:
-        foot_pos = self._get_foot_pos_local()
-        foot_contact = self._get_foot_contact()
+        foot_status = self._get_foot_status()
         obs = torch.cat(
             (
-                self.dof_effort ,       # inx 0 - 15    joint_torque
-                self.dof_vel ,          # inx 16 - 31   joint_vel
-                self.dof_pos ,          # inx 32 - 47   joint_pos
-                self.torso_position ,   # inx 48 49 50  base_pos
-                foot_pos,               # inx 51 - 62   foot position
-                foot_contact,           # inx 63 - 66   foot contact
-                self.angvel_loc,        # inx 67 - 69   base_angular vel [local]
-                self.vel_loc,           # inx 70 - 72   base_lin vel [local]
-                self.robot.data.projected_gravity_b,               # inx 73 - 75 Projected Gravity
+                self.dof_pos ,          # inx 0 - 18
+                normalize_angle(self.roll).unsqueeze(-1),       # inx 19
+                normalize_angle(self.pitch).unsqueeze(-1),      # inx 20
+                normalize_angle(self.yaw).unsqueeze(-1),        # inx 21
+                foot_status ,                                   # inx 22 - 25
             ),
             dim=-1
         )
-        observations = {"policy" : obs} # 76 term
-        # print(len(obs[0]))
-        # print(len(self.torso_position[0]))
+        observations = {"policy" : obs}
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        # total_reward = compute_rewards(
-        #     self.cfg.lin_vel_weight,
-        #     self.cfg.heading_weight,
-        #     self.cfg.up_weight,
-        #     self.vel_loc[:, 0],
-        #     self.heading_proj,
-        #     self.up_proj,
-        # )
-
-        lin_vel = self.vel_loc[:, 0]
-        heading_proj = self.heading_proj
-        up_proj = self.up_proj
-        joint_torques = torch.sum(torch.square(self.robot.data.applied_torque), dim=1)
-
         # speed reward
-        lin_vel_reward = lin_vel * self.cfg.lin_vel_weight
+        lin_vel_reward = self.vel_loc[:, 0] * self.cfg.lin_vel_weight
+
         # heading rewards    
-        heading_reward = torch.where(heading_proj > 0.95 , 0 , -0.5)    *   self.cfg.heading_weight
+        heading_reward = torch.where(self.heading_proj > 0.95 , 0 , -0.5)    *   self.cfg.heading_weight
+
         # aligning up axis of robot and environment
-        up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , -0.5)  *   self.cfg.up_weight
-        # 
-        
-        total_reward = lin_vel_reward + heading_reward + up_reward
+        up_reward = torch.where(torch.abs(self.up_proj) < 0.45, 0 , -0.5)  *   self.cfg.up_weight
 
-        return total_reward
-    
+        rewards = {
+            "lin_vel_reward" : lin_vel_reward , 
+            "heading_reward" : heading_reward ,
+            "up_reward" : up_reward,
+        }
 
+        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        # for key, value in rewards.items():
+        #     self._episode_reward[key] += value
+
+        return reward
 
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -222,6 +204,7 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         super()._reset_idx(env_ids)
 
         num_reset = len(env_ids)
+
 
         # ------------------ Reset Action ------------------ #
         self.actions[env_ids] = 0.0
@@ -248,72 +231,44 @@ class SlalomFullStateLocomotionTask(DirectRLEnv):
         to_target[:, 2] = 0.0
         self.potentials[env_ids] = -torch.norm(to_target, p=2, dim=-1) / self.cfg.sim.dt
 
+        # Logging Reward
+
+        self.extras["log"] = dict()
+        extras = dict() # Temporary Buffer
+        for key in self._episode_reward.keys():
+            episodic_sum_avg = torch.mean(self._episode_reward[key][env_ids])
+            extras[key] = episodic_sum_avg / self.max_episode_length
+            self._episode_reward[key][env_ids] = 0.0
+        self.extras["log"].update(extras)
+        # # Logging Value
+        extras = dict()
+        extras["lin_vel"] = torch.mean(self.vel_loc[:,0])
+        extras["heading"] = torch.mean(self.heading_proj)
+        extras["up_right"] = torch.mean(self.up_proj)
+        self.extras["log"].update(extras)
+
         self._compute_intermediate_values()
 
-    def _get_foot_pos_local(self) -> torch.Tensor:
-        """Return (num_envs, 4, 3) tensor of foot positions in the robot-base frame."""
-        # ------------------------------------------------------------------
-        foot_pos_w  = self.robot.data.body_pos_w[:, self.foot_indices]      # (N,4,3)
-        base_pos_w  = self.torso_position.unsqueeze(1)                      # (N,1,3)
-        delta_w     = foot_pos_w - base_pos_w                               # (N,4,3)
+    # def _get_foot_status(self):
+    #     self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,0])
+    #     self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,1])
+    #     self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,2])
+    #     self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,3])
+        
+    #     self.foot_contact_status[:,0] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,1] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,2] = 1 if self.foot_contact_force[:,0] > 1 else 0
+    #     self.foot_contact_status[:,3] = 1 if self.foot_contact_force[:,0] > 1 else 0
 
-        base_quat_w = self.torso_rotation.unsqueeze(1)                      # (N,1,4)
-        base_quat_conj = quat_conjugate(base_quat_w).expand(-1, 4, -1)      # (N,4,4)
-
-        # ---------- reshape เป็น ----------
-        B, F = base_quat_conj.shape[:2]          # B = num_envs, F = 4 feet
-        q_flat = base_quat_conj.reshape(B*F, 4)  # (B·F, 4)
-        v_flat = delta_w.reshape(B*F, 3)         # (B·F, 3)
-
-        # ---------- rotate ----------
-        v_rot  = quat_rotate(q_flat, v_flat)     # (B·F, 3)
-
-        # ---------- reshape ----------
-        foot_pos_b = v_rot.view(B, F, 3)         # (N, 4, 3)
-        foot_flat = foot_pos_b.reshape(foot_pos_b.shape[0], -1)  # (N, 12)
-        return foot_flat
+    #     return torch.stack((self.foot_contact_status[:,0] , self.foot_contact_status[:,1] , self.foot_contact_status[:,2] , self.foot_contact_status[:,3]),dim=1)
     
-    def _get_foot_contact(self):
-        self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor_lf"].data.net_forces_w)
-        self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor_rf"].data.net_forces_w)
-        self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor_lh"].data.net_forces_w)
-        self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor_rh"].data.net_forces_w)
-
-        return torch.stack((self.foot_contact_force[:,0] , self.foot_contact_force[:,1] , self.foot_contact_force[:,2] , self.foot_contact_force[:,3]),dim=1)
-        # print(self.scene["contact_sensor_lf"])
-        # print("Received contact force of: ", self.scene["contact_sensor_lf"].data.net_forces_w)
-        # print("Norm : ", torch.norm(self.scene["contact_sensor_lf"].data.net_forces_w))
-
-@torch.jit.script
-def compute_rewards(
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : torch.Tensor,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-):
-    '''
-    lin_vel_weight : float,
-    heading_weight: float,
-    up_weight: float,
-    lin_vel : float,
-    heading_proj: torch.Tensor,
-    up_proj: torch.Tensor,
-    '''
-    # speed reward
-    lin_vel_reward = lin_vel * lin_vel_weight
-
-    # heading rewards    
-    heading_reward = torch.where(heading_proj > 0.95 , 0 , -0.5)    *   heading_weight
-
-    # aligning up axis of robot and environment
-    up_reward = torch.where(torch.abs(up_proj) < 0.45, 0 , -0.5)  *   up_weight
-
-
-
-    total_reward = lin_vel_reward + heading_reward + up_reward
-    return total_reward
+    def _get_foot_status(self):
+        f = self.scene["contact_sensor"].data.net_forces_w  # shape (num_envs, 4, 3)
+        # compute per-foot norm
+        foot_force_norm = torch.norm(f, dim=-1)            # (num_envs, 4)
+        # threshold at 1.0
+        foot_status = (foot_force_norm > 1.0).float()      # (num_envs, 4)
+        return foot_status
 
 
 @torch.jit.script
@@ -333,7 +288,7 @@ def compute_intermediate_values(
     prev_potentials: torch.Tensor,
     dt: float,
 ):
-    to_target = targets - torso_position
+    to_target = targets - torso_position # in world frame
     to_target[:, 2] = 0.0
 
     

@@ -154,10 +154,11 @@ class SlalomLocomotionTask(DirectRLEnv):
             (
                 self.dof_pos ,          # inx 0 - 15
                 self.dof_vel ,          # inx 16 - 31
-                normalize_angle(self.roll).unsqueeze(-1),       # inx 32
-                normalize_angle(self.pitch).unsqueeze(-1),      # inx 33
-                normalize_angle(self.yaw).unsqueeze(-1),        # inx 34
-                foot_status ,                                   # inx 35 - 38
+                self.actions ,          # inx 32 - 47
+                normalize_angle(self.roll).unsqueeze(-1),       # inx 48
+                normalize_angle(self.pitch).unsqueeze(-1),      # inx 49
+                normalize_angle(self.yaw).unsqueeze(-1),        # inx 50
+                foot_status ,                                   # inx 51 - 54
             ),
             dim=-1
         )
@@ -174,10 +175,13 @@ class SlalomLocomotionTask(DirectRLEnv):
         # aligning up axis of robot and environment
         up_reward = torch.where(torch.abs(self.up_proj) < 0.45, 0 , -0.5)  *   self.cfg.up_weight
 
+        # energy_reward
+        # energy_reward = torch.sum( self.robot.data.applied_torque *self.robot.data.joint_vel) 
         rewards = {
             "lin_vel_reward" : lin_vel_reward , 
             "heading_reward" : heading_reward ,
             "up_reward" : up_reward,
+            # "energy_reward" : energy_reward 
         }
 
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
@@ -202,7 +206,6 @@ class SlalomLocomotionTask(DirectRLEnv):
         super()._reset_idx(env_ids)
 
         num_reset = len(env_ids)
-
 
         # ------------------ Reset Action ------------------ #
         self.actions[env_ids] = 0.0
@@ -230,7 +233,6 @@ class SlalomLocomotionTask(DirectRLEnv):
         self.potentials[env_ids] = -torch.norm(to_target, p=2, dim=-1) / self.cfg.sim.dt
 
         # Logging Reward
-
         self.extras["log"] = dict()
         extras = dict() # Temporary Buffer
         for key in self._episode_reward.keys():
@@ -246,19 +248,6 @@ class SlalomLocomotionTask(DirectRLEnv):
         self.extras["log"].update(extras)
 
         self._compute_intermediate_values()
-
-    # def _get_foot_status(self):
-    #     self.foot_contact_force[:,0] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,0])
-    #     self.foot_contact_force[:,1] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,1])
-    #     self.foot_contact_force[:,2] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,2])
-    #     self.foot_contact_force[:,3] = torch.norm(self.scene["contact_sensor"].data.net_forces_w[:,3])
-        
-    #     self.foot_contact_status[:,0] = 1 if self.foot_contact_force[:,0] > 1 else 0
-    #     self.foot_contact_status[:,1] = 1 if self.foot_contact_force[:,0] > 1 else 0
-    #     self.foot_contact_status[:,2] = 1 if self.foot_contact_force[:,0] > 1 else 0
-    #     self.foot_contact_status[:,3] = 1 if self.foot_contact_force[:,0] > 1 else 0
-
-    #     return torch.stack((self.foot_contact_status[:,0] , self.foot_contact_status[:,1] , self.foot_contact_status[:,2] , self.foot_contact_status[:,3]),dim=1)
     
     def _get_foot_status(self):
         f = self.scene["contact_sensor"].data.net_forces_w  # shape (num_envs, 4, 3)

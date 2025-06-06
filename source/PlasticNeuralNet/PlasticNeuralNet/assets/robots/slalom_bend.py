@@ -18,7 +18,7 @@ import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))  # Get the directory of the script
 slalom_path = os.path.normpath(
-    os.path.join(script_dir, "..", "models", "slalom_bendbody_19dof.usd")
+    os.path.join(script_dir, "..", "models", "slalom_bendbody_19dof2.usd")
 )
 
 SLALOM_BEND_CFG = ArticulationCfg(
@@ -51,4 +51,18 @@ SLALOM_BEND_CFG = ArticulationCfg(
                 effort_limit=4.1,
             )
         }
+        # actuators={
+        #     "dummy" : ImplicitActuatorCfg(
+        #         joint_names_expr=[r"^(?!joint0_).*"],
+        #         stiffness=1.0,
+        #         damping=0.0,
+        #         effort_limit=4.1,
+        #     ) ,
+        #     "body" : ImplicitActuatorCfg(
+        #         joint_names_expr=["joint0_.*"],
+        #         stiffness=1.0,
+        #         damping=0.0,
+        #         effort_limit=1.0,
+        #     ) ,
+        # }
 )

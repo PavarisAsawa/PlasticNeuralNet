@@ -154,12 +154,11 @@ class SlalomBendLocomotionTask(DirectRLEnv):
         foot_status = self._get_foot_status()
         obs = torch.cat(
             (
-                self.dof_pos ,          # inx 0 - 15
-                self.dof_vel ,          # inx 16 - 31
-                normalize_angle(self.roll).unsqueeze(-1),       # inx 32
-                normalize_angle(self.pitch).unsqueeze(-1),      # inx 33
-                normalize_angle(self.yaw).unsqueeze(-1),        # inx 34
-                foot_status ,                                   # inx 35 - 38
+                self.dof_pos ,          # inx 0 - 18
+                normalize_angle(self.roll).unsqueeze(-1),       # inx 19
+                normalize_angle(self.pitch).unsqueeze(-1),      # inx 20
+                normalize_angle(self.yaw).unsqueeze(-1),        # inx 21
+                foot_status ,                                   # inx 22 - 25
             ),
             dim=-1
         )
