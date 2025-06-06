@@ -78,16 +78,19 @@ class SlalomBendEnvCfg(DirectRLEnvCfg):
         num_envs = 1024, env_spacing = 2.0, replicate_physics=True
     )
     
+    
     # env
     decimation = 4 # controlFrequencyInv
-    episode_length_s = 30
-    action_space = 16 # for gecko
+    episode_length_s = 10 #30
+    action_space = 19 
+    # action_space = 10
+
     observation_space = 39 # 76 # for gecko
     state_space = 0
     action_scale = 1
     angular_velocity_scale = 1
 
-    contact_debug_vis = False
+    contact_debug_vis = True
     contact_force = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/foot_.*",
         update_period=0.0,

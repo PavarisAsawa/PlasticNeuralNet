@@ -78,6 +78,7 @@ class SlalomLocomotionTask(DirectRLEnv):
     def _setup_scene(self):
         # get robot cfg
         self.robot = Articulation(self.cfg.robot)
+        
         # Add contact sensor
         self.contact_sensor = ContactSensor(self.cfg.contact_force)
         self.scene.sensors["contact_sensor"] = self.contact_sensor

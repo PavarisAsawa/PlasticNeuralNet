@@ -36,12 +36,12 @@ SLALOM_BEND_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=4,
             solver_velocity_iteration_count=0,
-            sleep_threshold=0.005,
+            sleep_threshold=0.01,
             stabilization_threshold=0.001,
         )
     ),
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0 ,0.0 ,0.0)
+            pos=(0.0 ,0.0 ,0.075)
         ),
         actuators={
             "dummy" : ImplicitActuatorCfg(

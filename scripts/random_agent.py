@@ -61,13 +61,15 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
+    
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # sample actions from -1 to 1
-            actions = 3 * torch.rand(env.action_space.shape, device=env.unwrapped.device) - 1
+            actions = 2 * torch.rand(env.action_space.shape, device=env.unwrapped.device) - 1
             # apply actions
+            # print(actions)
             env.step(actions)
             # print(torch.norm(base_env.scene["contact_sensor_lf"].data.net_forces_w))
             # log.append(torch.norm(base_env.scene["contact_sensor_lf"].data.net_forces_w).item())

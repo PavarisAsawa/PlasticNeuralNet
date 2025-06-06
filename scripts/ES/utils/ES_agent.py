@@ -178,10 +178,20 @@ class ESAgent:
                 
             # Update to ES
             total_rewards_cpu = total_rewards.cpu().numpy()
+
+            
             fitlist = list(total_rewards_cpu)
             self.solver.tell(fitlist)
             fit_arr = np.array(fitlist)
-            print('epoch', epoch, 'mean', fit_arr.mean(), 
+            
+            # print(cumulative_reward[0])
+            # print(total_rewards_cpu[0])
+            # print(fitlist[0])
+            # print(fit_arr)
+            # print(fit_arr.mean(dtype=np.float64))
+
+            # print('epoch', epoch, 'mean', fit_arr.mean(dtype=np.float64), 
+            print('epoch', epoch, 'mean', np.nanmean(fit_arr), 
                   'best', fit_arr.max(), )
             pop_mean_curve[epoch] = fit_arr.mean()
             best_sol_curve[epoch] = fit_arr.max()

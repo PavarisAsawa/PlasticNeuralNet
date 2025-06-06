@@ -1,0 +1,103 @@
+
+# Task name - parse from the task name in the CLI
+task_name: null # task name is set on train file
+name : test_slalom      # Name for logging
+# experiment name. defaults to name of training config
+experiment: ''
+# if set to positive integer, overrides the default number of environments
+num_envs: ''
+# seed - set to -1 to choose random seed
+seed: -1
+# set the maximum number of learning iterations to train for. overrides default per-environment setting
+max_iterations: ''
+
+## Device config
+physics_engine: 'physx'
+# whether to use cpu or gpu pipeline
+pipeline: 'gpu'
+# whether to use cpu or gpu physx
+sim_device: 'gpu'
+# used for gpu simulation only - device id for running sim and task if pipeline=gpu
+device_id: 0
+# device to run RL
+rl_device: 'cuda:0'
+# multi-GPU training
+multi_gpu: False
+
+
+# RLGames Arguments
+# test - if set, run policy in inference mode (requires setting checkpoint to load)
+test: False
+# used to set checkpoint path
+checkpoint: ''
+# evaluate checkpoint
+evaluation: False
+
+# disables rendering
+headless: False  # <----------------------------------
+# enables native livestream
+enable_livestream: False
+# timeout for MT script
+mt_timeout: 300
+
+wandb :
+  wandb_activate: False
+  wandb_group: 'simple_loco'
+  wandb_name: 'test_slalom'
+  wandb_entity: ''
+  wandb_project: 'Slalom_beding'
+
+# path to a kit app file
+kit_app: ''
+
+# Warp
+warp: False
+
+# Training params
+EPOCHS: 500                   # <---------------------------------- 100
+SAVE_EVERY: 100               # <---------------------------------- 100
+EPISODE_LENGTH_TRAIN: 500     # <---------------------------------- 500
+EPISODE_LENGTH_TEST: 500      # <---------------------------------- 500
+resume_train: False
+
+custom_rewards: False
+
+# ES algorithm Standard
+ES_params:
+  POPSIZE: 1024 # workstation (500) # Default Condition if not parse argument
+  rank_fitness: True
+  antithetic: True
+  learning_rate: 0.1 #0.1 - bing # 0.05:RBF
+  learning_rate_decay: 0.9999 #0.999 - bing # 0.9999
+  sigma_init: 0.1 # 0.05 #0.1 -bing # 0.05 RBF
+  sigma_decay: 0.999
+  learning_rate_limit: 0.001
+  sigma_limit: 0.0001
+
+# model 
+model: hebb # ff, hebb, lstm
+model_type: 'parallel_Hebb'
+FF_ARCHITECTURE: [45, 64, 32, 19] # [22, 20, 10, 16] # [51, 20, 10, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
+HEBB_ARCHITECTURE: [45, 64, 32, 19] #[84, 64, 32, 16] # [num_input, num_hidd, num_output] Slalom Test
+LSTM_ARCHITECTURE: [51, 20, 16] # [num_input, num_hidd, num_output] dbAlpha 1 output
+HEBB_init_wnoise: 0.04 #0.02 #0.01
+HEBB_norm: 'var' # var, max, clip
+USE_TRAIN_HEBB: False
+USE_TRAIN_PARAM: False
+
+# # Test params rbf_hebb network
+# train_ff_path: 'Ant_test_rbf_ff_1628_99_132.3918.pickle' # flat terrain
+# train_rbf_path: 'Ant_80_199_139.4822.pickle' # flat terrain
+# train_hebb_path: 'Ant_test_rbf_hebb_2938_99_129.1072.pickle' # maxnorm
+# # train_hebb_path: 'Ant_test_rbf_hebb_7868_99_128.0409.pickle'  # max large
+# # train_hebb_path: 'Ant_test_rbf_hebb_2938_99_123.4924.pickle'  # flat terrain, clamp
+# train_lstm_path: 'Ant_test_rbf_lstm_5880_99_131.3515.pickle'  # flat terrain, clamp
+# # train_hebb_path: 'Ant_test_rbf_hebb_17600_299_55.65674.pickle'  # flat terrain
+# # train_rbf_path: 'Ant_test_rbf_80_299_117.0807.pickle' # rough terrain
+# # train_hebb_path: '.5065.pickle'  # flat terrain
+collect_w_matrix: False
+
+# Dbalpha trained weight
+train_ff_path: 'Ant_test_ff_1518_1_-90.7688.pickle' # flat terrain
+train_hebb_path: 'Slalom_hebb_simple_loco_29120_499_25.851.pickle' # maxnorm
+train_lstm_path: 'Ant_test_lstm_11640_1_-87.5167.pickle'  # flat terrain, clamp

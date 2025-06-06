@@ -31,6 +31,9 @@ class SlalomBendLocomotionTask(DirectRLEnv):
 
         # define joint dof index
         self._joint_dof_idx, _ = self.robot.find_joints(".*")
+        # print(_)
+        # print("--------------------")
+        # print(self._joint_dof_idx)
         # set dof limit
         self.dof_limits_lower = self.robot.data.soft_joint_pos_limits[0, :, 0] 
         self.dof_limits_upper = self.robot.data.soft_joint_pos_limits[0, :, 1]
