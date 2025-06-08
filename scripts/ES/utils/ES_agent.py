@@ -142,27 +142,21 @@ class ESAgent:
         best_sol_curve = np.zeros(self.EPOCHS)
         eval_curve = np.zeros(self.EPOCHS)
 
-        log = dict()
-        log["reward"] = []
-        log["lin_vel"] = []
-        log["heading"] = []
-        log["up_right"] = []
+        log = { "reward": [] }                 # episode-wise means
+        wandb_log_buffer = {}                  # temp dict for wandb each epoch
+
 
         for epoch in tqdm(range(self.EPOCHS)):
             # sample params from ES and set model params
             solutions = self.solver.ask()
             self.models.set_models_params(solutions)
+            
             total_rewards = torch.zeros(self.POPSIZE, device=self.device)
             cumulative_reward = torch.zeros(self.POPSIZE , device=self.device)
+
+            running_totals = {}
+            
             obs , _ = env.reset()
-
-
-            log_upright = torch.zeros(self.POPSIZE, device=self.device)
-            log_lin_vel = torch.zeros(self.POPSIZE, device=self.device)
-            log_heading = torch.zeros(self.POPSIZE, device=self.device)
-            log_lin_vel_rew = torch.zeros(self.POPSIZE, device=self.device)
-            log_upright_rew = torch.zeros(self.POPSIZE, device=self.device)
-            log_heading_rew = torch.zeros(self.POPSIZE, device=self.device)
 
             # Rollout
             for timse_step in range(self.EPISODE_LENGTH_TRAIN):
@@ -175,74 +169,45 @@ class ESAgent:
                 total_rewards += reward/self.EPISODE_LENGTH_TRAIN*100
 
                 # Logging
-                log_lin_vel += extras["log"]["lin_vel"]
-                log_upright += extras["log"]["up_right"]
-                log_heading += extras["log"]["heading"]
-
-                log_lin_vel_rew += extras["log"]["lin_vel_reward"]
-                log_upright_rew += extras["log"]["up_reward"]
-                log_heading_rew += extras["log"]["heading_reward"]
-
-                
-            # Update to ES
-            total_rewards_cpu = total_rewards.cpu().numpy()
+                for key, value in extras["log"].items():          # value is a tensor
+                    if key not in running_totals:                 # first time we see key
+                        running_totals[key] = torch.zeros_like(value)
+                    running_totals[key] += value
 
             
+
+            # Update to ES
+            total_rewards_cpu = total_rewards.cpu().numpy()
             fitlist = list(total_rewards_cpu)
             self.solver.tell(fitlist)
             fit_arr = np.array(fitlist)
 
+            # convert running_totals → episode means # Logging all extras value
+            episode_means = {k: (v / self.EPISODE_LENGTH_TRAIN).cpu().numpy().mean() for k, v in running_totals.items()}
+            # add episode_means value to log buffe
+            for k, v in episode_means.items():
+                log.setdefault(k, []).append(v) 
+            
             # print('epoch', epoch, 'mean', fit_arr.mean(dtype=np.float64), 
             print('epoch', epoch, 'mean', np.nanmean(fit_arr), 
                   'best', fit_arr.max(), )
             pop_mean_curve[epoch] = fit_arr.mean()
             best_sol_curve[epoch] = fit_arr.max()
-
-            # log
-            lin_vel = np.mean((log_lin_vel/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-            heading = np.mean((log_upright/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-            upright = np.mean((log_heading/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-
-            lin_vel_rew = np.mean((log_lin_vel_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-            heading_rew = np.mean((log_upright_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-            upright_rew = np.mean((log_heading_rew/self.EPISODE_LENGTH_TRAIN).cpu().numpy())
-
-           # Save value
-            value_dir = os.path.join(self.dir_path, "value")
-            os.makedirs(value_dir, exist_ok=True)
-            log["reward"].append(fit_arr.mean())
-            log["lin_vel"].append(lin_vel)
-            log["heading"].append(heading)
-            log["up_right"].append(upright)
-
-            np.save( os.path.join(value_dir, "metrics.npy"),log ,allow_pickle=True )           
-             # np.save(os.path.join(value_dir, "lin_vel.npy"),np.stack(log["lin_vel"], axis=0))
-            # np.save(os.path.join(value_dir, "heading.npy"),np.stack(log["heading"], axis=0))
-            # np.save(os.path.join(value_dir, "up_right.npy"),np.stack(log["up_right"], axis=0))
-            # np.save(os.path.join(value_dir, "reward.npy"),np.stack(log["reward"], axis=0))
-
-
             
             print(f"Now time : {datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}")
 
-
-
             # WanDB Log data -------------------------------
             if self.wandb_activate:
-                wandb.log({"epoch": epoch,
-                            "mean" : np.mean(fitlist),
-                            "best" : np.max(fitlist),
-                            "worst": np.min(fitlist),
-                            "std"  : np.std(fitlist),
-                            "reward" : np.mean(cumulative_reward.cpu().numpy()),
-                            "lin_vel_value" : np.mean(lin_vel),
-                            "heading_value" : np.mean(heading),
-                            "up_right" : np.mean(upright),
-                            "lin_vel_reward" : np.mean(lin_vel_rew),
-                            "heading_reward" : np.mean(heading_rew),
-                            "up_right_reward" : np.mean(upright_rew)
-                            })
- 
+                wandb_log_buffer.clear()
+                wandb_log_buffer["epoch"]  = epoch
+                wandb_log_buffer["mean"]   = float(fit_arr.mean())
+                wandb_log_buffer["best"]   = float(fit_arr.max())
+                wandb_log_buffer["worst"]  = float(fit_arr.min())
+                wandb_log_buffer["std"]    = float(fit_arr.std())
+                wandb_log_buffer["reward"] = float(cumulative_reward.cpu().numpy().mean())
+                wandb_log_buffer.update({k: float(v) for k, v in episode_means.items()})
+                wandb.log(wandb_log_buffer)
+
             # Save model params and OpenES params
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 print('saving..')

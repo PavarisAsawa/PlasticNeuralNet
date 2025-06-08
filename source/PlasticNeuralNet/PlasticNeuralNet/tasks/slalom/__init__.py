@@ -26,3 +26,13 @@ gym.register(
         "es_cfg_entry_point": f"{agents.__name__}:es_cfg.yaml",
     },
 )
+
+gym.register(
+    id='test',
+    entry_point=f"{__name__}.slalom_test_env:SlalomLocomotionTask",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.slalom_test_env_cfg:SlalomEnvCfg",
+        "es_cfg_entry_point": f"{agents.__name__}:es_cfg.yaml",
+    },
+)
